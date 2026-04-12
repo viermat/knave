@@ -531,7 +531,7 @@ async function grimReaper() {
 			});
 
 			if (targetUsers.length > 0)
-				for (let i = 0; i <= energyPoints; i++) {
+				for (let i = 0; i <= energyPoints - 1; i++) {
 					await subDoc(
 						"/user/attack/" + targetUsers[i].id,
 						async (doc) => {
