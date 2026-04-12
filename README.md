@@ -1,30 +1,25 @@
-[![Buy me a coffee](https://img.shields.io/badge/coffee-orange?style=flat&logo=buymeacoffee&label=Buy%20me%20a%20)](https://buymeacoffee.com/viermat)
-
-# [Necropolis](./necropolis.user.js)
+# ☠️[Necropolis](./necropolis.user.js)
 
 > [!CAUTION]
 > If you are caught using this userscript, you are guaranteed to get your account banned and possibly your IP
 
 Necropolis is a SimpleMMO toolkit userscript.
 
-# Tools included
+# 🔨Tools included
 
-## Cemetery Walk
+- Cemetery Walk - auto stepper
 
-Cemetery Walk is completely undetectable for auto stepping in SimpleMMO. This tool monkeypatches the document's `fetch` method and spoofs the "travel" request, making the fake auto-step click seem legit to the server.
+- Gravedigger - uses SimpleMMO's public API to imitate the "spy" function that the game offers without any in-game cost
 
-## Gravedigger
+- Graveyard Shift - notifies you about upcoming world bosses
 
-Gravedigger uses SimpleMMO's public API to imitate the "spy" function that the game offers, but without any in-game cost.
+- Grim Reaper - dumps all energy points in stabs
 
-## Graveyard Shift
+- Night Worker - uses all your quest points to perfom your best quest
 
-Graveyard Shift notifies you about upcoming world bosses.
+## 💛 Support
 
-## Grim Reaper
+If you find this project useful:
 
-Grim Reaper uses all your energy points for stabs, without user interaction.
-
-## Night Worker
-
-Night Worker uses all your quest points to perfom your best quest.
+[![Buy Me a Coffee](https://img.shields.io/badge/🚬-Buy%20Me%20a%20Cigarette-orange?style=flat)](https://buymeacoffee.com/viermat)
+[![Posts](https://img.shields.io/badge/📖-Read%20My%20Posts-blue?style=flat)](https://buymeacoffee.com/viermat/posts/283474)
