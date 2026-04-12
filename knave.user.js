@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name         Necropolis
+// @name         Knave
 // @version      v1
 // @description  SimpleMMO toolkit
 // @author       viermat (https://github.com/viermat)
@@ -80,7 +80,7 @@ async function wait(ms) {
 	return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function cemeteryWalk() {
+async function pilgrim() {
 	if (/travel*/g.test(location.href)) {
 		// Create action button
 		const btnOld = Array.from(document.querySelectorAll("span")).find(
@@ -144,7 +144,7 @@ async function cemeteryWalk() {
 		}
 
 		// Stylize action button
-		btnSpan.textContent = "Cemetery Walk";
+		btnSpan.textContent = "Pilgrim";
 		btn.style.cursor = "pointer";
 
 		// Set default color
@@ -184,7 +184,7 @@ async function cemeteryWalk() {
 	}
 }
 
-async function graveDigger() {
+async function warden() {
 	// Check for API key
 	if (!GM_getValue("api_key")) {
 		await subDoc("https://web.simple-mmo.com/p-api/home", (doc) => {
@@ -215,11 +215,11 @@ async function graveDigger() {
 
 	// Cache system
 	if (
-		!GM_getValue("graveDigger_cache") ||
-		GM_getValue("graveDigger_cache").stats.error
+		!GM_getValue("warden_cache") ||
+		GM_getValue("warden_cache").stats.error
 	) {
 		await postReq("player/me").then((s) => {
-			GM_setValue("graveDigger_cache", {
+			GM_setValue("warden_cache", {
 				lastCache: new Date().getTime(),
 				stats: s,
 			});
@@ -231,14 +231,13 @@ async function graveDigger() {
 
 	// Check if user is attacking another use
 	if (/\/user\/attack\/[0-9]+/g.test(location.href)) {
-		if (GM_getValue("graveDigger_cache")) {
+		if (GM_getValue("warden_cache")) {
 			let diff =
-				new Date(GM_getValue("graveDigger_cache").lastCache) -
-				new Date();
+				new Date(GM_getValue("warden_cache").lastCache) - new Date();
 
 			if (diff <= -2 * 60 * 1000) {
 				await postReq("player/me").then((s) => {
-					GM_setValue("graveDigger_cache", {
+					GM_setValue("warden_cache", {
 						lastCache: new Date().getTime(),
 						stats: s,
 					});
@@ -247,7 +246,7 @@ async function graveDigger() {
 		}
 
 		// Calculate user's and opponents' strength and defence
-		const meData = GM_getValue("graveDigger_cache").stats;
+		const meData = GM_getValue("warden_cache").stats;
 		const meStr = meData.str + meData.bonus_str;
 		const meDef = meData.def + meData.bonus_def;
 
@@ -291,7 +290,7 @@ async function graveDigger() {
 	}
 }
 
-async function graveyardShift() {
+async function envoy() {
 	/**
 	 * Get date when boss is attackable
 	 * @param {String} timeLeft Unparsed string for time left until boss is attackable
@@ -367,21 +366,19 @@ async function graveyardShift() {
 	}
 
 	// Cache system
-	if (!GM_getValue("graveyardShift_cache")) {
+	if (!GM_getValue("boss_cache")) {
 		await cacheBosses().then((b) => {
-			GM_setValue("graveyardShift_cache", {
+			GM_setValue("boss_cache", {
 				lastCache: new Date().getTime(),
 				bosses: b,
 			});
 		});
 	} else {
-		let diff =
-			new Date(GM_getValue("graveyardShift_cache").lastCache) -
-			new Date();
+		let diff = new Date(GM_getValue("boss_cache").lastCache) - new Date();
 
 		if (diff <= -30 * 60 * 1000) {
 			cacheBosses().then((b) => {
-				GM_setValue("graveyardShift_cache", {
+				GM_setValue("boss_cache", {
 					lastCache: new Date().getTime(),
 					bosses: b,
 				});
@@ -448,7 +445,7 @@ async function graveyardShift() {
 		});
 	}
 
-	const BOSSES = GM_getValue("graveyardShift_cache").bosses;
+	const BOSSES = GM_getValue("boss_cache").bosses;
 
 	// First page load check
 	handleNotify(BOSSES, GM_getValue("timeout"));
@@ -460,7 +457,7 @@ async function graveyardShift() {
 	);
 }
 
-async function grimReaper() {
+async function knight() {
 	// Create action button
 	const btnOld = Array.from(document.querySelectorAll("span")).find((span) =>
 		span.textContent.includes("Battle"),
@@ -473,7 +470,7 @@ async function grimReaper() {
 	const btnSpan = btn.querySelector("span");
 
 	// Stylize action button
-	btnSpan.textContent = "Grim Reaper";
+	btnSpan.textContent = "Knight";
 	btn.style.cursor = "pointer";
 
 	changeColor(btn, btnSpan, "lime");
@@ -570,9 +567,7 @@ async function grimReaper() {
 								);
 							else if (swalTitle.includes("Human")) {
 								breakLoop = 1;
-								alert(
-									"Human verification needed for Grim Rearper",
-								);
+								alert("Human verification needed for Knight");
 							} else if (swalTitle.includes("Oh no")) {
 								breakLoop = 1;
 								alert("You have died");
@@ -584,7 +579,7 @@ async function grimReaper() {
 				}
 		} else {
 			displayToast(
-				"You don't have enough energy to use Grim Reaper",
+				"You don't have enough energy to use Knight",
 				null,
 				"error",
 				2500,
@@ -596,7 +591,7 @@ async function grimReaper() {
 	});
 }
 
-async function nightWorker() {
+async function sentinel() {
 	// Create action button
 	const btnOld = Array.from(document.querySelectorAll("span")).find((span) =>
 		span.textContent.includes("Battle"),
@@ -609,7 +604,7 @@ async function nightWorker() {
 	const btnSpan = btn.querySelector("span");
 
 	// Stylize action button
-	btnSpan.textContent = "Night Worker";
+	btnSpan.textContent = "Sentinel";
 	btn.style.cursor = "pointer";
 
 	changeColor(btn, btnSpan, "lime");
@@ -685,7 +680,7 @@ async function nightWorker() {
 				);
 			} else {
 				displayToast(
-					"You don't have enough energy to use Night Worker",
+					"You don't have enough energy to use Sentinel",
 					null,
 					"error",
 					2500,
@@ -719,11 +714,5 @@ async function nightWorker() {
 	}
 
 	// Run modules
-	[
-		cemeteryWalk,
-		graveDigger,
-		graveyardShift,
-		grimReaper,
-		nightWorker,
-	].forEach((f) => f.call());
+	[pilgrim, warden, envoy, knight, sentinel].forEach((f) => f.call());
 })();
