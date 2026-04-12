@@ -45,6 +45,10 @@ async function subDoc(url, callback) {
 	});
 }
 
+// Safeguard
+while (!unsafeWindow.game_data?.settings)
+	await new Promise((r) => setTimeout(r, 100));
+
 /**
  * Custom displayToast for toasts with icons
  * @param {String} src Source of toast icon
@@ -421,6 +425,8 @@ async function graveyardShift() {
 	 */
 	function handleNotify(bosses, timeout, toastTimeout = 15) {
 		bosses.forEach((b) => {
+			b.date = new Date(b.date);
+
 			let diff = b.date - new Date();
 
 			if (diff >= 0 && diff <= timeout * 60 * 1000) {
@@ -530,8 +536,12 @@ async function grimReaper() {
 				});
 			});
 
+			let breakLoop = 0;
+
 			if (targetUsers.length > 0)
 				for (let i = 0; i <= energyPoints - 1; i++) {
+					if (breakLoop) break;
+
 					await subDoc(
 						"/user/attack/" + targetUsers[i].id,
 						async (doc) => {
@@ -545,15 +555,28 @@ async function grimReaper() {
 								);
 							}
 
-							_displayToast(
-								doc.querySelectorAll("div#npcImg > img")[1]
-									?.src,
-								20,
-								`Killed ${doc.querySelectorAll("a.truncate")[0]?.textContent}`,
-								"success",
-								5 * 1000,
-								1,
-							);
+							let swalTitle =
+								doc.querySelector("h2#swal2-title").textContent;
+
+							if (swalTitle.includes("Winner"))
+								_displayToast(
+									doc.querySelectorAll("div#npcImg > img")[1]
+										?.src,
+									20,
+									`Killed ${doc.querySelectorAll("a.truncate")[0]?.textContent}`,
+									"success",
+									5 * 1000,
+									1,
+								);
+							else if (swalTitle.includes("Human")) {
+								breakLoop = 1;
+								alert(
+									"Human verification needed for Grim Rearper",
+								);
+							} else if (swalTitle.includes("Oh no")) {
+								breakLoop = 1;
+								alert("You have died");
+							}
 						},
 					);
 
