@@ -9,7 +9,7 @@ Knave is a SimpleMMO toolkit userscript.
 
 - Pilgrim - auto stepper
 
-- Warden - uses SimpleMMO's public API to imitate the "spy" function that the game offers without any in-game cost
+- Warden - uses SimpleMMO's public API to imitate the "spy" function that the game offers, without any in-game cost
 
 - Envoy - notifies you about upcoming world bosses
 
