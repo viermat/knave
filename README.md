@@ -1,3 +1,5 @@
+[![Buy me a coffee](https://img.shields.io/badge/coffee-orange?style=flat&logo=buymeacoffee&label=Buy%20me%20a%20)](https://buymeacoffee.com/viermat)
+
 # [Necropolis](./necropolis.user.js)
 
 > [!CAUTION]
