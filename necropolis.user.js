@@ -389,23 +389,29 @@ async function graveyardShift() {
 	if (!GM_getValue("timeout")) GM_setValue("timeout", 5);
 	if (!GM_getValue("interval")) GM_setValue("interval", 2);
 
-	GM_registerMenuCommand("Set earliest notification", function () {
-		let value = prompt(
-			"Set how soon the notifications should start (in minutes)",
-			5,
-		);
+	GM_registerMenuCommand(
+		"Set when upcoming world boss notification start",
+		function () {
+			let value = prompt(
+				"Set how soon the notifications should start (in minutes)",
+				5,
+			);
 
-		if (value) GM_setValue("timeout", value);
-	});
+			if (value) GM_setValue("timeout", value);
+		},
+	);
 
-	GM_registerMenuCommand("Set notification interval", function () {
-		let value = prompt(
-			"Set how often the notification should appear when the world boss is soon (in minutes)",
-			2,
-		);
+	GM_registerMenuCommand(
+		"Set upcoming world boss notification interval",
+		function () {
+			let value = prompt(
+				"Set how often the notification should appear when the world boss is soon (in minutes)",
+				2,
+			);
 
-		if (value) GM_setValue("interval", value);
-	});
+			if (value) GM_setValue("interval", value);
+		},
+	);
 
 	/**
 	 * Check if any boss needs a notification
