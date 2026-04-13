@@ -17,6 +17,8 @@ Knave is a SimpleMMO toolkit userscript.
 
 - Sentinel - uses all your quest points to perfom your best quest
 
+- Max Energy - adds a "Use Max" button to MoE use pages
+
 ## 💛 Support
 
 If you find this project useful:

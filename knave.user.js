@@ -72,6 +72,18 @@ async function _displayToast(src, size, text, type, timeout, bottom = false) {
 }
 
 /**
+ * Get player data from internal API
+ * @returns {JSON} Player data
+ */
+async function getPlayerData() {
+	return new Promise((resolve) => {
+		fetch("/api/web-app")
+			.then((response) => response.json())
+			.then((data) => resolve(data));
+	});
+}
+
+/**
  * Sleep function
  * @param {Number} ms Sleep time in milliseconds
  * @returns
@@ -693,6 +705,52 @@ async function sentinel() {
 	});
 }
 
+async function energyMax() {
+	if (/\/inventory\/use\/(?:163049|611)/g.test(location.href)) {
+		const useBtn = document.querySelector('button[type="submit"]');
+		const maxBtn = useBtn.cloneNode(true);
+		const btnParent = useBtn.parentElement;
+		const btnInput = btnParent.querySelector("input");
+
+		maxBtn.classList.remove("rounded-r-md");
+		maxBtn.classList.add("rounded-l-md");
+		maxBtn.textContent = "Use Max";
+		maxBtn.setAttribute("type", "button");
+
+		btnInput.classList.remove("rounded-l-md");
+		btnParent.prepend(maxBtn);
+
+		maxBtn.addEventListener("click", async (e) => {
+			const data = await getPlayerData();
+			const itemCount = Number(
+				/[0-9]+/g.exec(
+					document.querySelector("div.text-sm.text-gray-400")
+						.textContent,
+				)[0],
+			);
+
+			const neededEnergy = data.max_energy - data.energy;
+
+			if (neededEnergy == 0) {
+				_displayToast(
+					"/img/icons/S_Thunder01.png",
+					20,
+					"You already have max energy!",
+					"error",
+					1700,
+				);
+
+				e.preventDefault();
+			} else {
+				btnInput.value =
+					neededEnergy > itemCount ? itemCount : neededEnergy;
+
+				useBtn.click();
+			}
+		});
+	}
+}
+
 (async function () {
 	"use strict";
 
@@ -714,5 +772,7 @@ async function sentinel() {
 	}
 
 	// Run modules
-	[pilgrim, warden, envoy, knight, sentinel].forEach((f) => f.call());
+	[pilgrim, warden, envoy, knight, sentinel, energyMax].forEach((f) =>
+		f.call(),
+	);
 })();
