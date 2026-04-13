@@ -597,7 +597,7 @@ async function knight() {
 async function sentinel() {
 	// Create action button
 	const btnOld = Array.from(document.querySelectorAll("span")).find((span) =>
-		span.textContent.includes("Battle"),
+		span.textContent.includes("Quests"),
 	);
 
 	const btn = btnOld.parentElement.cloneNode(true);
