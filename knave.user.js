@@ -498,17 +498,8 @@ async function knight() {
 		btn.classList.add("disabled");
 		changeColor(btn, btnSpan);
 
-		var energyPoints;
-
-		await subDoc("/user/character", (doc) => {
-			energyPoints = Number(
-				[...doc.querySelectorAll("dt")]
-					.find((e) => e.textContent.trim() === "Energy")
-					.parentElement.querySelector(".text-gray-300.font-medium")
-					.parentElement.textContent.trim()
-					.split(" ")[0],
-			);
-		});
+		const data = await getPlayerData();
+		var energyPoints = data.energy;
 
 		if (energyPoints > 0) {
 			displayToast(
@@ -652,10 +643,8 @@ async function sentinel() {
 				});
 			}
 
-			var questPoints = Number(
-				doc.querySelector('[x-text="number_format(quest_points)"]')
-					.textContent,
-			);
+			const data = await getPlayerData();
+			var questPoints = data.quest_points;
 
 			if (questPoints > 0) {
 				displayToast(
