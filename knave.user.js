@@ -13,14 +13,20 @@
 // ==/UserScript==
 
 /**
- * Change action button color
+ * Change action button state
  * @param {Element} button Action button
- * @param {Element} button Action button span
- * @param {String} [color="crimson"] color Button color
+ * @param {Boolean} [enabled="false"] enabled Revert to original state
  */
-function changeColor(button, buttonSpan, color = "crimson") {
-	buttonSpan.style.color = color;
-	button.querySelector("svg").setAttribute("fill", color);
+function changeState(button, enabled = false) {
+	if (enabled) {
+		button.classList.add("hover:text-gray-900");
+		button.classList.remove("dark:text-gray-600");
+		button.classList.add("dark:text-gray-300");
+	} else {
+		button.classList.remove("hover:text-gray-900");
+		button.classList.remove("dark:text-gray-300");
+		button.classList.add("dark:text-gray-600");
+	}
 }
 
 /**
@@ -117,7 +123,7 @@ async function pilgrim() {
 						// Kill stepper
 						window.isOn = false;
 						alert("Human confirmation needed");
-						changeColor(btn, btnSpan);
+						changeState(btn, true);
 					}
 				}
 			}
@@ -159,16 +165,13 @@ async function pilgrim() {
 		btnSpan.textContent = "Pilgrim";
 		btn.style.cursor = "pointer";
 
-		// Set default color
-		changeColor(btn, btnSpan);
-
 		// Repurpose "a" element into a button
 		btn.removeAttribute("href");
 		btn.addEventListener("click", () => {
 			window.isOn = !window.isOn;
 
-			if (window.isOn) changeColor(btn, btnSpan, "lime");
-			else changeColor(btn, btnSpan);
+			if (window.isOn) changeState(btn);
+			else changeState(btn, true);
 
 			autoStep(1200);
 		});
@@ -485,8 +488,6 @@ async function knight() {
 	btnSpan.textContent = "Knight";
 	btn.style.cursor = "pointer";
 
-	changeColor(btn, btnSpan, "lime");
-
 	// Repurpose "a" element into a button
 	btn.removeAttribute("href");
 	btn.addEventListener("click", async (e) => {
@@ -496,7 +497,7 @@ async function knight() {
 		}
 
 		btn.classList.add("disabled");
-		changeColor(btn, btnSpan);
+		changeState(btn);
 
 		const data = await getPlayerData();
 		var energyPoints = data.energy;
@@ -590,7 +591,7 @@ async function knight() {
 		}
 
 		btn.classList.remove("disabled");
-		changeColor(btn, btnSpan, "lime");
+		changeState(btn, true);
 	});
 }
 
@@ -610,8 +611,6 @@ async function sentinel() {
 	btnSpan.textContent = "Sentinel";
 	btn.style.cursor = "pointer";
 
-	changeColor(btn, btnSpan, "lime");
-
 	// Repurpose "a" element into a button
 	btn.removeAttribute("href");
 	btn.addEventListener("click", async (e) => {
@@ -621,7 +620,7 @@ async function sentinel() {
 		}
 
 		btn.classList.add("disabled");
-		changeColor(btn, btnSpan);
+		changeState(btn);
 
 		await subDoc("/quests", async (doc) => {
 			async function asyncQuery(query) {
@@ -690,7 +689,7 @@ async function sentinel() {
 		});
 
 		btn.classList.remove("disabled");
-		changeColor(btn, btnSpan, "lime");
+		changeState(btn, true);
 	});
 }
 
