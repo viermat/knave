@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Knave
-// @version      v1
+// @version      v2
 // @description  SimpleMMO toolkit
 // @author       viermat (https://github.com/viermat)
 // @match        https://web.simple-mmo.com/*
