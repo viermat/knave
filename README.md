@@ -1,15 +1,15 @@
-# ☠️[Knave](./knave.user.js)
+# 🃏 [Knave](./knave.user.js)
 
 > [!CAUTION]
 > If you are caught using this userscript, you are guaranteed to get your account banned and possibly your IP
 
 Knave is a SimpleMMO toolkit userscript.
 
-# 🔨Tools included
+# 🔨 Tools included
 
 - Pilgrim - auto stepper
 
-- Warden - uses SimpleMMO's public API to imitate the "spy" function that the game offers without any in-game cost
+- Warden - uses SimpleMMO's public API to imitate the "spy" function that the game offers, without any in-game cost
 
 - Envoy - notifies you about upcoming world bosses
 
