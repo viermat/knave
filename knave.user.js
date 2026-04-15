@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Knave
-// @version      v2
+// @version      v3
 // @description  SimpleMMO toolkit
 // @author       viermat (https://github.com/viermat)
 // @match        https://web.simple-mmo.com/*
@@ -42,7 +42,7 @@ async function subDoc(url, callback) {
 		document.body.appendChild(tempFrame);
 
 		tempFrame.addEventListener("load", async () => {
-			await callback(tempFrame.contentDocument);
+			await callback(tempFrame.contentDocument, tempFrame.contentWindow);
 
 			tempFrame.remove();
 
@@ -51,7 +51,7 @@ async function subDoc(url, callback) {
 	});
 }
 
-// Safeguard
+// Safeguard for _displayToast
 while (!unsafeWindow.game_data?.settings)
 	await new Promise((r) => setTimeout(r, 100));
 
@@ -98,12 +98,24 @@ async function wait(ms) {
 	return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/**
+ * Search for an element with a condition
+ * @param {Function} handler Handler function (argument: element)
+ * @param {String} element Element type
+ * @param {Document} doc Document scope
+ */
+function condSearch(handler, element = "*", doc = document) {
+	return Array.from(doc.querySelectorAll(element)).find(handler);
+}
+
+function textSearch(string, element = "*", doc = document) {
+	return condSearch((e) => e.textContent.includes(string), element, doc);
+}
+
 async function pilgrim() {
 	if (/travel*/g.test(location.href)) {
 		// Create action button
-		const btnOld = Array.from(document.querySelectorAll("span")).find(
-			(span) => span.textContent.includes("Inventory"),
-		);
+		const btnOld = textSearch("Inventory", "span");
 
 		const btn = btnOld.parentElement.cloneNode(true);
 		btnOld.parentElement.parentElement.appendChild(btn);
@@ -111,19 +123,136 @@ async function pilgrim() {
 		// Action button's text element
 		const btnSpan = btn.querySelector("span");
 
-		// Check for SMMO's "captcha"
-		new MutationObserver((mList) => {
+		// "Take a Step" button
+		const stepBtn = condSearch(
+			(e) => e.id.startsWith("step_btn"),
+			"button",
+		);
+
+		// MutObs for other things
+		new MutationObserver(async (mList) => {
 			for (const m of mList) {
-				if (m.type === "childList") {
-					if (
-						Array.from(document.querySelectorAll("*")).find((btn) =>
-							btn.textContent.includes("I'm a person! Promise!"),
-						)
-					) {
+				if (m.type === "childList" && window.isOn) {
+					// Wave to every player that pops up
+					textSearch("Wave", "span")?.click();
+
+					// CAPTCHA
+					if (textSearch("I'm a person! Promise!", "a")) {
 						// Kill stepper
 						window.isOn = false;
 						alert("Human confirmation needed");
 						changeState(btn, true);
+						return;
+					}
+
+					let npc = null;
+
+					for (const node of m.addedNodes) {
+						if (!(node instanceof HTMLElement)) continue;
+
+						const waveEl =
+							node.matches("span") &&
+							node.textContent.includes("Wave")
+								? node
+								: node.querySelector?.("span");
+
+						if (waveEl && waveEl.textContent.includes("Wave"))
+							waveEl.click();
+
+						const botEl =
+							node.matches("a") &&
+							node.textContent.includes("I'm a person! Promise!")
+								? node
+								: node.querySelector?.("a");
+
+						if (
+							botEl &&
+							botEl.textContent.includes("I'm a person! Promise!")
+						) {
+							window.isOn = false;
+							alert("Human confirmation needed");
+							changeState(btn, true);
+							return;
+						}
+
+						if (!npc) {
+							const npcEl =
+								node.matches("a") &&
+								node.textContent.includes("Attack")
+									? node
+									: node.querySelector?.("a");
+
+							if (npcEl && npcEl.textContent.includes("Attack")) {
+								npc = npcEl;
+							}
+						}
+					}
+
+					if (npc && !npc?.disabled) {
+						window.attacking = true;
+
+						await subDoc(
+							npc.href.split("?")[0],
+							async (doc, win) => {
+								let killed = false;
+
+								const oldFetch = win.fetch;
+
+								win.fetch = async (...args) => {
+									const res = await oldFetch.apply(win, args);
+
+									try {
+										if (
+											args[0].startsWith("https://") &&
+											new URL(args[0]).href.startsWith(
+												"https://web.simple-mmo.com/api/npcs/attack/",
+											)
+										) {
+											const data = await res
+												.clone()
+												.json();
+
+											if (data.title.includes("Winner")) {
+												killed = true;
+											} else {
+												console.log(data);
+												killed = true;
+											}
+										}
+									} catch (e) {
+										console.log(e);
+									}
+
+									return res;
+								};
+
+								while (!killed) {
+									const attackBtn = condSearch(
+										(e) => e.textContent.trim() == "Attack",
+										"button",
+										doc,
+									);
+
+									if (!attackBtn) break;
+									attackBtn.click();
+
+									await wait(
+										500 + Math.floor(Math.random() * 500),
+									);
+								}
+
+								_displayToast(
+									doc.querySelector("img#npc_avatar").src,
+									20,
+									`Killed ${condSearch((e) => /\/npcs\/view/g.test(e.href), "a", doc).textContent}`,
+									"success",
+									1700,
+									true,
+								);
+							},
+						);
+
+						window.attacking = false;
 					}
 				}
 			}
@@ -132,34 +261,26 @@ async function pilgrim() {
 			subtree: true,
 		});
 
-		/**
-		 * Stepper interval checker
-		 * @param {Number} t Interval timeout for stepping
-		 */
-		function autoStep(t) {
-			window.goodbye = setInterval(
-				() => {
-					if (window.isOn) {
-						window.fakeX = 800 + Math.floor(Math.random() * 90);
-						window.fakeY = 880 + Math.floor(Math.random() * 30);
+		async function travel() {
+			if (!stepBtn.disabled && window.isOn && !window.attacking) {
+				await wait(400 + Math.floor(Math.random() * 500));
 
-						let result = Array.from(
-							document.querySelectorAll("span"),
-						).find((span) =>
-							span.textContent.includes("Take a Step"),
-						);
+				window.fakeX = 800 + Math.floor(Math.random() * 90);
+				window.fakeY = 880 + Math.floor(Math.random() * 30);
 
-						if (result) result = result.parentElement;
-						if (!result.disabled) result.click();
-
-						autoStep(t);
-					}
-
-					clearInterval(window.goodbye);
-				},
-				t + Math.floor(Math.random() * 500),
-			);
+				stepBtn.click();
+			}
 		}
+
+		// MutObs for other things
+		new MutationObserver(async (mList) => {
+			for (const m of mList) {
+				if (m.type === "attributes") travel();
+			}
+		}).observe(stepBtn, {
+			attributes: true,
+			attributeFilter: ["disabled"],
+		});
 
 		// Stylize action button
 		btnSpan.textContent = "Pilgrim";
@@ -170,14 +291,13 @@ async function pilgrim() {
 		btn.addEventListener("click", () => {
 			window.isOn = !window.isOn;
 
-			if (window.isOn) changeState(btn);
-			else changeState(btn, true);
-
-			autoStep(1200);
+			if (window.isOn) {
+				changeState(btn);
+				travel();
+			} else changeState(btn, true);
 		});
 
-		// Monkey-patching fetch
-		// This is the most important part of the user script, as this makes the step request seem legit by faking cursor position and denying event dispatching.
+		// Modify request before it's sent so mouse position corresponds
 		const oldFetch = unsafeWindow.fetch;
 
 		unsafeWindow.fetch = async (...args) => {
@@ -205,7 +325,7 @@ async function warden() {
 		await subDoc("https://web.simple-mmo.com/p-api/home", (doc) => {
 			GM_setValue(
 				"api_key",
-				doc.querySelector("input[name='api_key']").value,
+				condSearch((e) => e.type == "text", "input", doc).value,
 			);
 
 			location.reload();
@@ -244,7 +364,7 @@ async function warden() {
 	// URL Path array
 	var argArr = location.href.split("/");
 
-	// Check if user is attacking another use
+	// Check if user is attacking another user
 	if (/\/user\/attack\/[0-9]+/g.test(location.href)) {
 		if (GM_getValue("warden_cache")) {
 			let diff =
@@ -344,9 +464,11 @@ async function envoy() {
 					name: earliestBoss
 						.querySelector(".text-gray-900")
 						.textContent.trim(),
-					level: earliestBoss
-						.querySelector(".text-gray-500")
-						.textContent.trim(),
+					level: textSearch(
+						"Level",
+						"p",
+						earliestBoss,
+					).textContent.trim(),
 					avatar: earliestBoss.parentElement.querySelector(
 						"div.flex-shrink-0 > img",
 					).src,
@@ -370,7 +492,11 @@ async function envoy() {
 						level: mainDiv
 							.querySelector(".font-normal")
 							.textContent.trim(),
-						avatar: mainDiv.parentElement.querySelector("img").src,
+						avatar: condSearch(
+							(e) => 1,
+							"img",
+							mainDiv.parentElement,
+						),
 						date: parseTime(e.textContent.trim()),
 					});
 				});
@@ -474,9 +600,7 @@ async function envoy() {
 
 async function knight() {
 	// Create action button
-	const btnOld = Array.from(document.querySelectorAll("span")).find((span) =>
-		span.textContent.includes("Battle"),
-	);
+	const btnOld = textSearch("Battle", "span");
 
 	const btn = btnOld.parentElement.cloneNode(true);
 	btnOld.parentElement.parentElement.appendChild(btn);
@@ -513,24 +637,22 @@ async function knight() {
 			const targetUsers = [];
 
 			await subDoc("/battle/colosseum", (doc) => {
-				doc.querySelectorAll(".font-normal.text-gray-600").forEach(
-					(e) => {
-						targetUsers.push({
-							id: Number(
-								/[0-9]+/g.exec(
-									e.parentElement.parentElement.querySelectorAll(
-										"a",
-									)[2].href,
-								)[0],
-							),
-							level: Number(
-								/Level ([0-9]+)/g.exec(
-									e.textContent.replaceAll(",", ""),
-								)[1],
-							),
-						});
-					},
-				);
+				[...doc.querySelector("tbody").children].forEach((e) => {
+					targetUsers.push({
+						id: Number(
+							/[0-9]+/g.exec(textSearch("Attack", "a", e))[0],
+						),
+						level: Number(
+							/Level ([0-9]+)/g.exec(
+								textSearch(
+									"Level",
+									"div",
+									e,
+								).textContent.replaceAll(",", ""),
+							)[1],
+						),
+					});
+				});
 			}).then(() => {
 				targetUsers.sort((a, b) => {
 					return a.level - b.level;
@@ -597,9 +719,7 @@ async function knight() {
 
 async function sentinel() {
 	// Create action button
-	const btnOld = Array.from(document.querySelectorAll("span")).find((span) =>
-		span.textContent.includes("Quests"),
-	);
+	const btnOld = textSearch("Tasks", "span");
 
 	const btn = btnOld.parentElement.cloneNode(true);
 	btnOld.parentElement.parentElement.appendChild(btn);
@@ -712,8 +832,7 @@ async function energyMax() {
 			const data = await getPlayerData();
 			const itemCount = Number(
 				/[0-9]+/g.exec(
-					document.querySelector("div.text-sm.text-gray-400")
-						.textContent,
+					textSearch("of this item", "div.text-sm").textContent,
 				)[0],
 			);
 
