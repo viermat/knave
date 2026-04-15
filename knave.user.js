@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Knave
-// @version      v3
+// @version      v3.1
 // @description  SimpleMMO toolkit
 // @author       viermat (https://github.com/viermat)
 // @match        https://web.simple-mmo.com/*
@@ -10,7 +10,109 @@
 // @grant        GM_setValue
 // @grant        GM_getValue
 // @grant        unsafeWindow
+// @noframes
 // ==/UserScript==
+
+/**
+ * Create and act inside an iframe
+ * @param {String} url iframe url
+ * @param {Function} callback Callback function that executes inside iframe (args: document, window)
+ */
+async function subDoc(url, callback) {
+	return new Promise((resolve) => {
+		let tempFrame = document.createElement("iframe");
+		tempFrame.setAttribute("src", url);
+		tempFrame.setAttribute("style", "display: none");
+		document.body.appendChild(tempFrame);
+
+		tempFrame.addEventListener("load", async () => {
+			await callback(tempFrame.contentDocument, tempFrame.contentWindow);
+
+			tempFrame.remove();
+
+			resolve();
+		});
+	});
+}
+
+/**
+ * Asynchronous query to find an element
+ * @param {String} query Query string
+ * @param {Document} doc Document scope
+ * @returns {Promise<Element>} Resolved element
+ */
+async function asyncQuery(query, doc = document) {
+	return new Promise((resolve) => {
+		const interval = setInterval(() => {
+			const queryEl = doc.querySelector(query);
+
+			if (queryEl) {
+				clearInterval(interval);
+				clearTimeout(timer);
+
+				resolve(queryEl);
+			}
+		}, 100);
+
+		const timer = setTimeout(() => clearInterval(interval), 5000);
+	});
+}
+
+/**
+ * Get player data from internal API
+ * @returns {JSON} Player data
+ */
+async function getPlayerData() {
+	return new Promise((resolve) => {
+		fetch("/api/web-app")
+			.then((response) => response.json())
+			.then((data) => resolve(data));
+	});
+}
+
+/**
+ * Asynchronous sleep function
+ * @param {Number} ms Sleep time in milliseconds
+ * @returns {Promise<null>} Resolved when sleep has finished
+ */
+async function asyncWait(ms) {
+	return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// Safeguard for displayToast gravity
+while (!unsafeWindow.game_data?.settings)
+	await new Promise((r) => setTimeout(r, 100));
+
+/**
+ * Display toast
+ * @param {String} text Toast text
+ * @param {String} type Toast type (info, success, error, null)
+ * @param {Number} timeout Toast timeout (in seconds)
+ */
+function t_displayToast(text, type = "info", timeout = 1) {
+	displayToast(text, null, type, timeout * 1000);
+}
+
+/**
+ * Display toast with icon
+ * @param {String} src URL Source of toast icon
+ * @param {Number} size Width x Height of icon
+ * @param {String} text Toast text
+ * @param {String} type Toast type (info, success, error, null)
+ * @param {Number} timeout Toast timeout (in seconds)
+ * @param {boolean} [bottom=false] Turn gravity to bottom
+ */
+function i_displayToast(src, size, text, type, timeout, bottom = false) {
+	if (bottom) unsafeWindow.game_data.settings.toast_position = "bottom_left";
+
+	t_displayToast(
+		`<img width="${size}" height="${size}" src=${src} /> ${text}`,
+		type,
+		timeout,
+	);
+
+	if (bottom) unsafeWindow.game_data.settings.toast_position = null;
+}
 
 /**
  * Change action button state
@@ -30,86 +132,24 @@ function changeState(button, enabled = false) {
 }
 
 /**
- * Work inside an iframe
- * @param {String} url The iframe url
- * @param {callback} callback The callback function that executes inside iframe
- */
-async function subDoc(url, callback) {
-	return new Promise((resolve) => {
-		let tempFrame = document.createElement("iframe");
-		tempFrame.setAttribute("src", url);
-		tempFrame.setAttribute("style", "display: none");
-		document.body.appendChild(tempFrame);
-
-		tempFrame.addEventListener("load", async () => {
-			await callback(tempFrame.contentDocument, tempFrame.contentWindow);
-
-			tempFrame.remove();
-
-			resolve();
-		});
-	});
-}
-
-// Safeguard for _displayToast
-while (!unsafeWindow.game_data?.settings)
-	await new Promise((r) => setTimeout(r, 100));
-
-/**
- * Custom displayToast for toasts with icons
- * @param {String} src Source of toast icon
- * @param {Number} size Width x Height of icon
- * @param {String} text Toast text
- * @param {String} type Toast type (info, success, error, null)
- * @param {Number} timeout Toast timeout
- * @param {boolean} [bottom=false] Turn gravity to bottom
- */
-async function _displayToast(src, size, text, type, timeout, bottom = false) {
-	if (bottom) unsafeWindow.game_data.settings.toast_position = "bottom_left";
-
-	displayToast(
-		`<img width="${size}" height="${size}" src=${src} /> ${text}`,
-		null,
-		type,
-		timeout,
-	);
-
-	if (bottom) unsafeWindow.game_data.settings.toast_position = null;
-}
-
-/**
- * Get player data from internal API
- * @returns {JSON} Player data
- */
-async function getPlayerData() {
-	return new Promise((resolve) => {
-		fetch("/api/web-app")
-			.then((response) => response.json())
-			.then((data) => resolve(data));
-	});
-}
-
-/**
- * Sleep function
- * @param {Number} ms Sleep time in milliseconds
- * @returns
- */
-async function wait(ms) {
-	return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-/**
  * Search for an element with a condition
- * @param {Function} handler Handler function (argument: element)
- * @param {String} element Element type
+ * @param {Function} handler Handler function (arg: Element)
+ * @param {String} queryElem Element query
  * @param {Document} doc Document scope
  */
-function condSearch(handler, element = "*", doc = document) {
-	return Array.from(doc.querySelectorAll(element)).find(handler);
+function condSearch(handler, queryElem = "*", doc = document) {
+	return Array.from(doc.querySelectorAll(queryElem)).find(handler);
 }
 
-function textSearch(string, element = "*", doc = document) {
-	return condSearch((e) => e.textContent.includes(string), element, doc);
+/**
+ * Text-only condSearch
+ * @param {String} searchStr Search string (inclusion-based, not equivalency)
+ * @param {String} queryElem Element query
+ * @param {Document} doc Document scope
+ * @returns
+ */
+function textSearch(searchStr, queryElem = "*", doc = document) {
+	return condSearch((e) => e.textContent.includes(searchStr), queryElem, doc);
 }
 
 async function pilgrim() {
@@ -129,27 +169,47 @@ async function pilgrim() {
 			"button",
 		);
 
+		var timeSpent = 0;
+		var stepCount = 0;
+		var killCount = 0;
+
+		function switchState() {
+			window.isOn = !window.isOn;
+
+			if (window.isOn) {
+				timeSpent = new Date();
+
+				changeState(btn);
+				travel();
+			} else {
+				changeState(btn, true);
+
+				if (stepCount > 5) {
+					Swal.fire({
+						title: "Journey completed",
+						type: "success",
+						html: `<div style="text-align: center">Steps: ${stepCount}<br>NPCs killed: ${killCount}<br>Time stepping: ${Math.floor((Date.now() - timeSpent) / 1000 / 60)}</div>`,
+						timer: 15 * 1000,
+					});
+				}
+
+				timeSpent = 0;
+				stepCount = 0;
+				killCount = 0;
+			}
+		}
+
 		// MutObs for other things
 		new MutationObserver(async (mList) => {
 			for (const m of mList) {
 				if (m.type === "childList" && window.isOn) {
-					// Wave to every player that pops up
-					textSearch("Wave", "span")?.click();
-
-					// CAPTCHA
-					if (textSearch("I'm a person! Promise!", "a")) {
-						// Kill stepper
-						window.isOn = false;
-						alert("Human confirmation needed");
-						changeState(btn, true);
-						return;
-					}
-
 					let npc = null;
 
+					// Check only for added nodes
 					for (const node of m.addedNodes) {
 						if (!(node instanceof HTMLElement)) continue;
 
+						// Auto wave
 						const waveEl =
 							node.matches("span") &&
 							node.textContent.includes("Wave")
@@ -159,6 +219,7 @@ async function pilgrim() {
 						if (waveEl && waveEl.textContent.includes("Wave"))
 							waveEl.click();
 
+						// Kill if bot detection
 						const botEl =
 							node.matches("a") &&
 							node.textContent.includes("I'm a person! Promise!")
@@ -175,6 +236,7 @@ async function pilgrim() {
 							return;
 						}
 
+						// Check for NPCs
 						if (!npc) {
 							const npcEl =
 								node.matches("a") &&
@@ -188,23 +250,29 @@ async function pilgrim() {
 						}
 					}
 
+					// Auto NPC killer
 					if (npc && !npc?.disabled) {
 						window.attacking = true;
 
 						await subDoc(
 							npc.href.split("?")[0],
 							async (doc, win) => {
-								let killed = false;
+								let npcDefeated = false;
 
+								// Monkeypatch fetch
 								const oldFetch = win.fetch;
 
 								win.fetch = async (...args) => {
 									const res = await oldFetch.apply(win, args);
 
 									try {
+										const url =
+											typeof args[0] === "string"
+												? args[0]
+												: args[0].url;
+
 										if (
-											args[0].startsWith("https://") &&
-											new URL(args[0]).href.startsWith(
+											url.startsWith(
 												"https://web.simple-mmo.com/api/npcs/attack/",
 											)
 										) {
@@ -212,21 +280,53 @@ async function pilgrim() {
 												.clone()
 												.json();
 
-											if (data.title.includes("Winner")) {
-												killed = true;
-											} else {
-												console.log(data);
-												killed = true;
+											let type = res?.type;
+
+											if (type) {
+												npcDefeated = true;
+
+												if (data.type == "success") {
+													i_displayToast(
+														doc.querySelector(
+															"img#npc_avatar",
+														).src,
+														20,
+														`Killed ${condSearch((e) => /\/npcs\/view/g.test(e.href), "a", doc).textContent}`,
+														"success",
+														5,
+														true,
+													);
+
+													killCount++;
+												} else {
+													if (
+														data.title.includes(
+															"defeated",
+														)
+													) {
+														t_displayToast(
+															`Died atacking: ${e.title}`,
+															"error",
+															5,
+														);
+													} else {
+														t_displayToast(
+															`Error attacking: ${e.title}`,
+															"error",
+															10,
+														);
+
+														console.error(res);
+													}
+												}
 											}
 										}
-									} catch (e) {
-										console.log(e);
-									}
+									} catch {}
 
 									return res;
 								};
 
-								while (!killed) {
+								while (!npcDefeated) {
 									const attackBtn = condSearch(
 										(e) => e.textContent.trim() == "Attack",
 										"button",
@@ -236,19 +336,10 @@ async function pilgrim() {
 									if (!attackBtn) break;
 									attackBtn.click();
 
-									await wait(
+									await asyncWait(
 										500 + Math.floor(Math.random() * 500),
 									);
 								}
-
-								_displayToast(
-									doc.querySelector("img#npc_avatar").src,
-									20,
-									`Killed ${condSearch((e) => /\/npcs\/view/g.test(e.href), "a", doc).textContent}`,
-									"success",
-									1700,
-									true,
-								);
 							},
 						);
 
@@ -261,14 +352,17 @@ async function pilgrim() {
 			subtree: true,
 		});
 
+		// Step button function
 		async function travel() {
 			if (!stepBtn.disabled && window.isOn && !window.attacking) {
-				await wait(400 + Math.floor(Math.random() * 500));
+				await asyncWait(400 + Math.floor(Math.random() * 500));
 
 				window.fakeX = 800 + Math.floor(Math.random() * 90);
 				window.fakeY = 880 + Math.floor(Math.random() * 30);
 
 				stepBtn.click();
+
+				stepCount++;
 			}
 		}
 
@@ -288,26 +382,18 @@ async function pilgrim() {
 
 		// Repurpose "a" element into a button
 		btn.removeAttribute("href");
-		btn.addEventListener("click", () => {
-			window.isOn = !window.isOn;
-
-			if (window.isOn) {
-				changeState(btn);
-				travel();
-			} else changeState(btn, true);
-		});
+		btn.addEventListener("click", () => switchState());
 
 		// Modify request before it's sent so mouse position corresponds
 		const oldFetch = unsafeWindow.fetch;
 
 		unsafeWindow.fetch = async (...args) => {
+			const url = typeof args[0] === "string" ? args[0] : args[0].url;
+
 			if (
-				args[0].startsWith("https://") &&
-				new URL(args[0]).href.startsWith(
-					"https://api.simple-mmo.com/api/action/travel/4",
-				)
+				url.startsWith("https://api.simple-mmo.com/api/action/travel/4")
 			) {
-				var params = args[1].body;
+				let params = args[1].body;
 
 				params.set("s", "false");
 				params.set("d_1", window.fakeX || 830);
@@ -391,19 +477,19 @@ async function warden() {
 		const oppStr = oppData.str + oppData.bonus_str;
 		const oppDef = oppData.def + oppData.bonus_def;
 
-		_displayToast(
+		i_displayToast(
 			meData.avatar,
 			30,
 			`You: ${meStr} / ${meDef}`,
 			"success",
-			5000,
+			5,
 		);
-		_displayToast(
+		i_displayToast(
 			oppData.avatar,
 			30,
 			`Opponent: ${oppStr} / ${oppDef}`,
 			"error",
-			5000,
+			5,
 		);
 
 		// Check if opponent is 10% stronger than user
@@ -454,6 +540,7 @@ async function envoy() {
 		return new Promise((resolve) => {
 			const bossArr = [];
 
+			// Collect world bosses into cache
 			subDoc("https://web.simple-mmo.com/battle/world-bosses", (doc) => {
 				// Push earliest boss first
 				let earliestBoss = doc.querySelector(
@@ -568,7 +655,7 @@ async function envoy() {
 			let diff = b.date - new Date();
 
 			if (diff >= 0 && diff <= timeout * 60 * 1000) {
-				_displayToast(
+				i_displayToast(
 					b.avatar,
 					30,
 					`${b.name} (${b.level}) at ${b.date
@@ -579,7 +666,7 @@ async function envoy() {
 						.toString()
 						.padStart(2, "0")}`,
 					"info",
-					toastTimeout * 1000,
+					toastTimeout,
 					1,
 				);
 			}
@@ -623,17 +710,14 @@ async function knight() {
 		btn.classList.add("disabled");
 		changeState(btn);
 
+		// Get EP count
 		const data = await getPlayerData();
 		var energyPoints = data.energy;
 
 		if (energyPoints > 0) {
-			displayToast(
-				'<img width="20" height="20" src="/img/sprites/bosses/16.png" />',
-				null,
-				"success",
-				2000,
-			);
+			i_displayToast("/img/sprites/bosses/16.png", 20, "", "success", 2);
 
+			// Collect opponents
 			const targetUsers = [];
 
 			await subDoc("/battle/colosseum", (doc) => {
@@ -659,6 +743,7 @@ async function knight() {
 				});
 			});
 
+			var killCount = 0;
 			let breakLoop = 0;
 
 			if (targetUsers.length > 0)
@@ -667,50 +752,106 @@ async function knight() {
 
 					await subDoc(
 						"/user/attack/" + targetUsers[i].id,
-						async (doc) => {
-							while (!doc.querySelector("h2#swal2-title")) {
-								doc.querySelector(
+						async (doc, win) => {
+							let oppDefeated = false;
+
+							// Patch XHR (no idea why attack doesn't use fetch)
+							const oldSend = win.XMLHttpRequest.prototype.send;
+
+							win.XMLHttpRequest.prototype.send = function (
+								body,
+							) {
+								this.addEventListener("load", function () {
+									let res = this?.responseText;
+
+									try {
+										res = JSON.parse(this.responseText);
+
+										let type = res?.type;
+
+										if (type) {
+											oppDefeated = true;
+
+											if (type == "success") {
+												killCount++;
+
+												i_displayToast(
+													doc.querySelectorAll(
+														"div#npcImg > img",
+													)[1]?.src,
+													20,
+													`Killed ${doc.querySelectorAll("a.truncate")[0]?.textContent}`,
+													"success",
+													5,
+													1,
+												);
+											} else if (type === "error") {
+												breakLoop = 1;
+
+												if (
+													res.title.includes(
+														"defeated",
+													)
+												) {
+													i_displayToast(
+														doc.querySelectorAll(
+															"div#npcImg > img",
+														)[1]?.src,
+														20,
+														`Died attacking ${doc.querySelectorAll("a.truncate")[0]?.textContent}`,
+														"error",
+														5,
+														1,
+													);
+												} else {
+													t_displayToast(
+														`Error attacking: ${e.title}`,
+														"error",
+														10,
+													);
+
+													console.error(res);
+												}
+											}
+										}
+									} catch {}
+								});
+
+								return oldSend.call(this, body);
+							};
+
+							while (!oppDefeated) {
+								const attackBtn = doc.querySelector(
 									"button#attackButton",
-								).click();
-
-								await wait(
-									1200 + Math.floor(Math.random() * 800),
 								);
-							}
 
-							let swalTitle =
-								doc.querySelector("h2#swal2-title").textContent;
+								if (!attackBtn) break;
+								attackBtn.click();
 
-							if (swalTitle.includes("Winner"))
-								_displayToast(
-									doc.querySelectorAll("div#npcImg > img")[1]
-										?.src,
-									20,
-									`Killed ${doc.querySelectorAll("a.truncate")[0]?.textContent}`,
-									"success",
-									5 * 1000,
-									1,
+								await asyncWait(
+									1.1 + Math.floor(Math.random() * 0.8),
 								);
-							else if (swalTitle.includes("Human")) {
-								breakLoop = 1;
-								alert("Human verification needed for Knight");
-							} else if (swalTitle.includes("Oh no")) {
-								breakLoop = 1;
-								alert("You have died");
 							}
 						},
 					);
 
-					await wait(1500 + Math.floor(Math.random() * 500));
+					await asyncWait(1500 + Math.floor(Math.random() * 500));
 				}
 		} else {
-			displayToast(
+			t_displayToast(
 				"You don't have enough energy to use Knight",
-				null,
 				"error",
-				2500,
+				2.5,
 			);
 		}
+
+		i_displayToast(
+			"https://web.simple-mmo.com/img/icons/W_Axe008.png",
+			20,
+			`Killed ${killCount} players`,
+			"success",
+			5,
+		);
 
 		btn.classList.remove("disabled");
 		changeState(btn, true);
@@ -742,68 +883,52 @@ async function sentinel() {
 		btn.classList.add("disabled");
 		changeState(btn);
 
+		// Enter quests
 		await subDoc("/quests", async (doc) => {
-			async function asyncQuery(query) {
-				return new Promise((resolve) => {
-					const interval = setInterval(() => {
-						const e = doc.querySelector(query);
-
-						if (e) {
-							clearInterval(interval);
-							clearTimeout(timer);
-							resolve(e);
-						}
-					}, 100);
-
-					const timer = setTimeout(
-						() => clearInterval(interval),
-						5000,
-					);
-				});
-			}
-
+			// Collect QP count
 			const data = await getPlayerData();
 			var questPoints = data.quest_points;
 
 			if (questPoints > 0) {
-				displayToast(
-					'<img width="20" height="20" src="/img/icons/W_Book01.png" />',
-					null,
-					"success",
-					2000,
-				);
+				i_displayToast("/img/icons/W_Book01.png", 20, "", "success", 2);
 
+				// Elements can only be queried through classes unfortunately, no IDs or accessible text
+
+				// Get latest quest
 				let latestQuest = await asyncQuery(
 					".relative.mt-4 > div > button",
+					doc,
 				);
 
 				latestQuest.click();
 
+				// Quest solver
 				for (let i = 1; i <= questPoints; i++) {
 					let performQuest = await asyncQuery(
 						".relative.mt-2 > button",
+						doc,
 					);
+
 					performQuest.click();
 
-					await wait(1400 + Math.floor(Math.random() * 500));
+					await asyncWait(1400 + Math.floor(Math.random() * 500));
 				}
 
-				let img = await asyncQuery("img.h-10.w-auto");
-				let title = await asyncQuery("div.text-gray-800");
+				let img = await asyncQuery("img.h-10.w-auto", doc);
+				let title = await asyncQuery("div.text-gray-800", doc);
 
-				_displayToast(
+				i_displayToast(
 					img.src,
 					20,
-					`Perfomed ${questPoints} of ${title.textContent}`,
+					`Perfomed ${questPoints} of "${title.textContent}"`,
 					"success",
-					5 * 1000,
+					5,
 				);
 			} else {
-				displayToast(
+				t_displayToast(
 					"You don't have enough energy to use Sentinel",
-					null,
 					"error",
-					2500,
+					2.5,
 				);
 			}
 		});
@@ -814,12 +939,15 @@ async function sentinel() {
 }
 
 async function energyMax() {
+	// Only apply on tradeable and untradeable MoE "use" pages
 	if (/\/inventory\/use\/(?:163049|611)/g.test(location.href)) {
+		// Create "Use Max" button and stylize
 		const useBtn = document.querySelector('button[type="submit"]');
 		const maxBtn = useBtn.cloneNode(true);
 		const btnParent = useBtn.parentElement;
 		const btnInput = btnParent.querySelector("input");
 
+		// Restyle borders
 		maxBtn.classList.remove("rounded-r-md");
 		maxBtn.classList.add("rounded-l-md");
 		maxBtn.textContent = "Use Max";
@@ -829,6 +957,7 @@ async function energyMax() {
 		btnParent.prepend(maxBtn);
 
 		maxBtn.addEventListener("click", async (e) => {
+			// Calculate needed energy so no failure occurs
 			const data = await getPlayerData();
 			const itemCount = Number(
 				/[0-9]+/g.exec(
@@ -839,12 +968,12 @@ async function energyMax() {
 			const neededEnergy = data.max_energy - data.energy;
 
 			if (neededEnergy == 0) {
-				_displayToast(
+				i_displayToast(
 					"/img/icons/S_Thunder01.png",
 					20,
 					"You already have max energy!",
 					"error",
-					1700,
+					2.5,
 				);
 
 				e.preventDefault();
@@ -861,9 +990,6 @@ async function energyMax() {
 (async function () {
 	"use strict";
 
-	// Ensure script doesn't run in iframes
-	if (window.top !== window.self) return;
-
 	// Check for category
 	if (!document.querySelector("h3#viermatExists")) {
 		// Create custom menu category
@@ -872,6 +998,7 @@ async function energyMax() {
 
 		title.textContent = "viermat";
 		title.id = "viermatExists";
+
 		titleOld.parentElement.append(
 			document.querySelectorAll("hr")[2].cloneNode(),
 			title,
