@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Knave
-// @version      v3.1
+// @version      3.2
 // @description  SimpleMMO toolkit
 // @author       viermat (https://github.com/viermat)
 // @match        https://web.simple-mmo.com/*
@@ -96,14 +96,15 @@ function t_displayToast(text, type = "info", timeout = 1) {
 /**
  * Display toast with icon
  * @param {String} src URL Source of toast icon
- * @param {Number} size Width x Height of icon
  * @param {String} text Toast text
  * @param {String} type Toast type (info, success, error, null)
  * @param {Number} timeout Toast timeout (in seconds)
  * @param {boolean} [bottom=false] Turn gravity to bottom
  */
-function i_displayToast(src, size, text, type, timeout, bottom = false) {
+function i_displayToast(src, text, type, timeout, bottom = false) {
 	if (bottom) unsafeWindow.game_data.settings.toast_position = "bottom_left";
+
+	let size = 20;
 
 	t_displayToast(
 		`<img width="${size}" height="${size}" src=${src} /> ${text}`,
@@ -152,6 +153,13 @@ function textSearch(searchStr, queryElem = "*", doc = document) {
 	return condSearch((e) => e.textContent.includes(searchStr), queryElem, doc);
 }
 
+const ICONS = {
+	Attack: "/img/icons/W_Axe008.png",
+	Boss: "/img/sprites/bosses/16.png",
+	Energy: "/img/icons/S_Thunder01.png",
+	Book: "/img/icons/W_Book01.png",
+};
+
 async function pilgrim() {
 	if (/travel*/g.test(location.href)) {
 		// Create action button
@@ -177,7 +185,7 @@ async function pilgrim() {
 			window.isOn = !window.isOn;
 
 			if (window.isOn) {
-				timeSpent = new Date();
+				if (timeSpent == 0) timeSpent = new Date();
 
 				changeState(btn);
 				travel();
@@ -185,10 +193,17 @@ async function pilgrim() {
 				changeState(btn, true);
 
 				if (stepCount > 5) {
+					let totalSeconds = Math.floor(
+						(Date.now() - timeSpent) / 1000,
+					);
+
 					Swal.fire({
 						title: "Journey completed",
 						type: "success",
-						html: `<div style="text-align: center">Steps: ${stepCount}<br>NPCs killed: ${killCount}<br>Time stepping: ${Math.floor((Date.now() - timeSpent) / 1000 / 60)}</div>`,
+						html: `<div style="text-align: center">Steps: ${stepCount}
+						<br>NPCs killed: ${killCount}
+						<br>Time stepping: ${Math.floor(totalSeconds / 60)}m ${totalSeconds % 60}s
+						</div>`,
 						timer: 15 * 1000,
 					});
 				}
@@ -216,8 +231,10 @@ async function pilgrim() {
 								? node
 								: node.querySelector?.("span");
 
-						if (waveEl && waveEl.textContent.includes("Wave"))
+						if (waveEl && waveEl.textContent.includes("Wave")) {
 							waveEl.click();
+							waveEl.parentElement.remove();
+						}
 
 						// Kill if bot detection
 						const botEl =
@@ -231,8 +248,15 @@ async function pilgrim() {
 							botEl.textContent.includes("I'm a person! Promise!")
 						) {
 							window.isOn = false;
-							alert("Human confirmation needed");
 							changeState(btn, true);
+
+							Swal.fire({
+								title: "Warning",
+								type: "warning",
+
+								text: "Pilgrim has stopped. Complete human verification and turn on again",
+							});
+
 							return;
 						}
 
@@ -285,12 +309,13 @@ async function pilgrim() {
 											if (type) {
 												npcDefeated = true;
 
+												npc.remove();
+
 												if (data.type == "success") {
 													i_displayToast(
 														doc.querySelector(
 															"img#npc_avatar",
 														).src,
-														20,
 														`Killed ${condSearch((e) => /\/npcs\/view/g.test(e.href), "a", doc).textContent}`,
 														"success",
 														5,
@@ -305,18 +330,18 @@ async function pilgrim() {
 														)
 													) {
 														t_displayToast(
-															`Died atacking: ${e.title}`,
+															`Died atacking: ${data.title}`,
 															"error",
 															5,
 														);
 													} else {
 														t_displayToast(
-															`Error attacking: ${e.title}`,
+															`Error attacking: ${data.title}`,
 															"error",
 															10,
 														);
 
-														console.error(res);
+														console.error(data);
 													}
 												}
 											}
@@ -477,16 +502,9 @@ async function warden() {
 		const oppStr = oppData.str + oppData.bonus_str;
 		const oppDef = oppData.def + oppData.bonus_def;
 
-		i_displayToast(
-			meData.avatar,
-			30,
-			`You: ${meStr} / ${meDef}`,
-			"success",
-			5,
-		);
+		i_displayToast(meData.avatar, `You: ${meStr} / ${meDef}`, "success", 5);
 		i_displayToast(
 			oppData.avatar,
-			30,
 			`Opponent: ${oppStr} / ${oppDef}`,
 			"error",
 			5,
@@ -615,7 +633,7 @@ async function envoy() {
 	}
 
 	// Default settings
-	if (!GM_getValue("timeout")) GM_setValue("timeout", 5);
+	if (!GM_getValue("timeout")) GM_setValue("timeout", 30);
 	if (!GM_getValue("interval")) GM_setValue("interval", 2);
 
 	GM_registerMenuCommand(
@@ -623,7 +641,7 @@ async function envoy() {
 		function () {
 			let value = prompt(
 				"Set how soon the notifications should start (in minutes)",
-				5,
+				30,
 			);
 
 			if (value) GM_setValue("timeout", value);
@@ -657,7 +675,6 @@ async function envoy() {
 			if (diff >= 0 && diff <= timeout * 60 * 1000) {
 				i_displayToast(
 					b.avatar,
-					30,
 					`${b.name} (${b.level}) at ${b.date
 						.getHours()
 						.toString()
@@ -715,7 +732,7 @@ async function knight() {
 		var energyPoints = data.energy;
 
 		if (energyPoints > 0) {
-			i_displayToast("/img/sprites/bosses/16.png", 20, "", "success", 2);
+			i_displayToast(ICONS.Boss, "Knight started", "success", 2);
 
 			// Collect opponents
 			const targetUsers = [];
@@ -746,7 +763,7 @@ async function knight() {
 			var killCount = 0;
 			let breakLoop = 0;
 
-			if (targetUsers.length > 0)
+			if (targetUsers.length > 0) {
 				for (let i = 0; i <= energyPoints - 1; i++) {
 					if (breakLoop) break;
 
@@ -779,11 +796,10 @@ async function knight() {
 													doc.querySelectorAll(
 														"div#npcImg > img",
 													)[1]?.src,
-													20,
 													`Killed ${doc.querySelectorAll("a.truncate")[0]?.textContent}`,
 													"success",
 													5,
-													1,
+													true,
 												);
 											} else if (type === "error") {
 												breakLoop = 1;
@@ -797,15 +813,32 @@ async function knight() {
 														doc.querySelectorAll(
 															"div#npcImg > img",
 														)[1]?.src,
-														20,
 														`Died attacking ${doc.querySelectorAll("a.truncate")[0]?.textContent}`,
 														"error",
 														5,
-														1,
+														true,
+													);
+												} else if (
+													res.result.includes(
+														"half health",
+													)
+												) {
+													// Remove user from list and go back in counter
+													targetUsers.splice(i, 1);
+													i--;
+
+													i_displayToast(
+														doc.querySelectorAll(
+															"div#npcImg > img",
+														)[1]?.src,
+														`Could not attack ${doc.querySelectorAll("a.truncate")[0]?.textContent}, skipping`,
+														"info",
+														5,
+														true,
 													);
 												} else {
 													t_displayToast(
-														`Error attacking: ${e.title}`,
+														`Error attacking: ${data.title}`,
 														"error",
 														10,
 													);
@@ -837,6 +870,14 @@ async function knight() {
 
 					await asyncWait(1500 + Math.floor(Math.random() * 500));
 				}
+
+				i_displayToast(
+					ICONS.Attack,
+					`Killed ${killCount} players`,
+					"success",
+					5,
+				);
+			}
 		} else {
 			t_displayToast(
 				"You don't have enough energy to use Knight",
@@ -844,14 +885,6 @@ async function knight() {
 				2.5,
 			);
 		}
-
-		i_displayToast(
-			"https://web.simple-mmo.com/img/icons/W_Axe008.png",
-			20,
-			`Killed ${killCount} players`,
-			"success",
-			5,
-		);
 
 		btn.classList.remove("disabled");
 		changeState(btn, true);
@@ -890,7 +923,7 @@ async function sentinel() {
 			var questPoints = data.quest_points;
 
 			if (questPoints > 0) {
-				i_displayToast("/img/icons/W_Book01.png", 20, "", "success", 2);
+				i_displayToast(ICONS.Book, "Sentinel started", "success", 2);
 
 				// Elements can only be queried through classes unfortunately, no IDs or accessible text
 
@@ -919,7 +952,6 @@ async function sentinel() {
 
 				i_displayToast(
 					img.src,
-					20,
 					`Perfomed ${questPoints} of "${title.textContent}"`,
 					"success",
 					5,
@@ -969,8 +1001,7 @@ async function energyMax() {
 
 			if (neededEnergy == 0) {
 				i_displayToast(
-					"/img/icons/S_Thunder01.png",
-					20,
+					ICONS.Energy,
 					"You already have max energy!",
 					"error",
 					2.5,
@@ -1005,8 +1036,13 @@ async function energyMax() {
 		);
 	}
 
-	// Run modules
-	[pilgrim, warden, envoy, knight, sentinel, energyMax].forEach((f) =>
-		f.call(),
-	);
+	// Load tools
+	try {
+		[pilgrim, warden, envoy, knight, sentinel, energyMax].forEach((f) =>
+			f.call(),
+		);
+	} catch (e) {
+		t_displayToast("Error loading Knave tools", "error", 1e10);
+		console.error(e);
+	}
 })();
