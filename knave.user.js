@@ -735,36 +735,54 @@ async function knight() {
 			i_displayToast(ICONS.Boss, "Knight started", "success", 2);
 
 			// Collect opponents
-			const targetUsers = [];
+			async function generatePlayers(energy = 5) {
+				const users = [];
 
-			await subDoc("/battle/colosseum", (doc) => {
-				[...doc.querySelector("tbody").children].forEach((e) => {
-					targetUsers.push({
-						id: Number(
-							/[0-9]+/g.exec(textSearch("Attack", "a", e))[0],
-						),
-						level: Number(
-							/Level ([0-9]+)/g.exec(
-								textSearch(
-									"Level",
-									"div",
-									e,
-								).textContent.replaceAll(",", ""),
-							)[1],
-						),
+				for (let i = 0; i < Math.ceil(energy / 5); i++) {
+					await subDoc("/battle/colosseum", (doc) => {
+						[...doc.querySelector("tbody").children].forEach(
+							(e) => {
+								users.push({
+									id: Number(
+										/[0-9]+/g.exec(
+											textSearch("Attack", "a", e),
+										)[0],
+									),
+									level: Number(
+										/Level ([0-9]+)/g.exec(
+											textSearch(
+												"Level",
+												"div",
+												e,
+											).textContent.replaceAll(",", ""),
+										)[1],
+									),
+								});
+							},
+						);
+
+						users.sort((a, b) => {
+							return a.level - b.level;
+						});
 					});
-				});
-			}).then(() => {
-				targetUsers.sort((a, b) => {
-					return a.level - b.level;
-				});
-			});
+
+					users.splice(-5);
+
+					await asyncWait(600);
+				}
+
+				users.splice(energy);
+
+				return users;
+			}
+
+			const targetUsers = await generatePlayers(energyPoints);
 
 			var killCount = 0;
 			let breakLoop = 0;
 
 			if (targetUsers.length > 0) {
-				for (let i = 0; i <= energyPoints - 1; i++) {
+				for (let i = 0; i < targetUsers.length; i++) {
 					if (breakLoop) break;
 
 					await subDoc(
@@ -778,77 +796,84 @@ async function knight() {
 							win.XMLHttpRequest.prototype.send = function (
 								body,
 							) {
-								this.addEventListener("load", function () {
-									let res = this?.responseText;
+								this.addEventListener(
+									"load",
+									async function () {
+										let res = this?.responseText;
 
-									try {
-										res = JSON.parse(this.responseText);
+										try {
+											res = JSON.parse(this.responseText);
 
-										let type = res?.type;
+											let type = res?.type;
 
-										if (type) {
-											oppDefeated = true;
+											if (type) {
+												oppDefeated = true;
 
-											if (type == "success") {
-												killCount++;
-
-												i_displayToast(
-													doc.querySelectorAll(
-														"div#npcImg > img",
-													)[1]?.src,
-													`Killed ${doc.querySelectorAll("a.truncate")[0]?.textContent}`,
-													"success",
-													5,
-													true,
-												);
-											} else if (type === "error") {
-												breakLoop = 1;
-
-												if (
-													res.title.includes(
-														"defeated",
-													)
-												) {
-													i_displayToast(
-														doc.querySelectorAll(
-															"div#npcImg > img",
-														)[1]?.src,
-														`Died attacking ${doc.querySelectorAll("a.truncate")[0]?.textContent}`,
-														"error",
-														5,
-														true,
-													);
-												} else if (
-													res.result.includes(
-														"half health",
-													)
-												) {
-													// Remove user from list and go back in counter
-													targetUsers.splice(i, 1);
-													i--;
+												if (type == "success") {
+													killCount++;
 
 													i_displayToast(
 														doc.querySelectorAll(
 															"div#npcImg > img",
 														)[1]?.src,
-														`Could not attack ${doc.querySelectorAll("a.truncate")[0]?.textContent}, skipping`,
-														"info",
+														`Killed ${doc.querySelectorAll("a.truncate")[0]?.textContent}`,
+														"success",
 														5,
 														true,
 													);
-												} else {
-													t_displayToast(
-														`Error attacking: ${data.title}`,
-														"error",
-														10,
-													);
+												} else if (type === "error") {
+													if (
+														res.result.includes(
+															"defeated",
+														)
+													) {
+														breakLoop = 1;
 
-													console.error(res);
+														i_displayToast(
+															doc.querySelectorAll(
+																"div#npcImg > img",
+															)[1]?.src,
+															`Died attacking ${doc.querySelectorAll("a.truncate")[0]?.textContent}`,
+															"error",
+															5,
+															true,
+														);
+													} else if (
+														res.result.includes(
+															"half health",
+														)
+													) {
+														i_displayToast(
+															doc.querySelectorAll(
+																"div#npcImg > img",
+															)[1]?.src,
+															`Could not attack ${doc.querySelectorAll("a.truncate")[0]?.textContent}, skipping`,
+															"info",
+															5,
+															true,
+														);
+
+														targetUsers.concat(
+															await generatePlayers(
+																1,
+															),
+														);
+													} else {
+														breakLoop = 1;
+
+														t_displayToast(
+															`Error attacking: ${data.title}`,
+															"error",
+															10,
+														);
+
+														console.error(res);
+													}
 												}
 											}
-										}
-									} catch {}
-								});
+										} catch {}
+									},
+								);
 
 								return oldSend.call(this, body);
 							};
