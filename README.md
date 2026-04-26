@@ -9,6 +9,8 @@ Knave is a SimpleMMO toolkit userscript.
 
 - Pilgrim - auto steps, auto waves to incoming players and auto kills NPCs
 
+- Codex - adds a settings minipage to "Customisation" in the game for increased immersion and personalisation
+
 - Warden - uses the public API to imitate the "spy" function without any in-game cost
 
 - Envoy - notifies you about upcoming world bosses
@@ -18,6 +20,8 @@ Knave is a SimpleMMO toolkit userscript.
 - Sentinel - uses all your quest points to perfom your best quest
 
 - Max Energy - adds a "Use Max" button when using MoEs
+
+- Max Stats - changes + button on stats page to automatically add max points to stat type (feature disabled by default)
 
 ## 💛 Support
 

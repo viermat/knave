@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Knave
-// @version      3.2
+// @version      4
 // @description  SimpleMMO toolkit
 // @author       viermat (https://github.com/viermat)
 // @match        https://web.simple-mmo.com/*
@@ -160,6 +160,170 @@ const ICONS = {
 	Book: "/img/icons/W_Book01.png",
 };
 
+async function codex(settings) {
+	if (/\/preferences\/customisation*/g.test(location.href)) {
+		const textIcon = document
+			.querySelectorAll(".px-2.text-yellow-800")[1]
+			.cloneNode(true);
+
+		textIcon.classList.remove("text-yellow-800");
+		textIcon.classList.remove("bg-yellow-100");
+
+		textIcon.classList.add("text-purple-800");
+		textIcon.classList.add("bg-purple-100");
+
+		textIcon.textContent = "Knave";
+
+		function createSwitch(title, desc, gmValue) {
+			var switchState = false;
+
+			const _switchEl = textSearch(
+				"Task Autocomplete",
+				"span",
+			).parentElement;
+
+			const switchEl = _switchEl.cloneNode(true);
+			switchEl.setAttribute("wire:ignore", "");
+
+			const switchTitle = switchEl.querySelector(
+				"#availability-label-task_autocomplete",
+			);
+
+			switchTitle.parentElement.appendChild(textIcon.cloneNode(true));
+
+			switchTitle.setAttribute("id", `${gmValue}-title`);
+			switchTitle.textContent = title;
+
+			const switchDesc = switchEl.querySelector(
+				"#availability-description-task_autocomplete",
+			);
+
+			switchDesc.setAttribute("id", `${gmValue}-desc`);
+			switchDesc.textContent = desc;
+
+			const switchBtn = switchEl.querySelector("button");
+
+			switchBtn.removeAttribute("wire:click");
+
+			function check(enabled) {
+				switchState = enabled;
+
+				if (enabled) {
+					switchBtn.classList.remove("bg-gray-200");
+					switchBtn.classList.add("bg-indigo-600");
+
+					switchBtn
+						.querySelector("span")
+						.classList.remove("translate-x-0");
+					switchBtn
+						.querySelector("span")
+						.classList.add("translate-x-5");
+				} else {
+					switchBtn.classList.add("bg-gray-200");
+					switchBtn.classList.remove("bg-indigo-600");
+
+					switchBtn
+						.querySelector("span")
+						.classList.add("translate-x-0");
+					switchBtn
+						.querySelector("span")
+						.classList.remove("translate-x-5");
+				}
+			}
+
+			check(Boolean(GM_getValue(gmValue)));
+
+			switchBtn.addEventListener("click", () => {
+				switchState = !switchState;
+
+				GM_setValue(gmValue, switchState);
+				check(switchState);
+			});
+
+			_switchEl.parentElement.appendChild(switchEl);
+
+			return switchEl;
+		}
+
+		function createInput(
+			title,
+			desc,
+			gmValue,
+			inputType = "text",
+			defaultVal,
+		) {
+			const _inputEl = textSearch(
+				"Reset the Tutorial",
+				"span",
+			).parentElement;
+
+			const inputEl = _inputEl.cloneNode(true);
+			inputEl.setAttribute("wire:ignore", "");
+
+			const inputTitle = inputEl.querySelector(
+				"#availability-label-tutorial-reset",
+			);
+
+			inputTitle.parentElement.appendChild(textIcon.cloneNode(true));
+
+			inputTitle.setAttribute("id", `${gmValue}-title`);
+			inputTitle.textContent = title;
+
+			const inputDesc = inputEl.querySelector(
+				"#availability-description-tutorial-reset",
+			);
+
+			inputDesc.setAttribute("id", `${gmValue}-desc`);
+			inputDesc.textContent = desc;
+
+			const inputBtn = inputEl.querySelector("button");
+			inputBtn.textContent = "Change";
+
+			inputBtn.removeAttribute("wire:click");
+
+			inputBtn.addEventListener("click", () => {
+				Swal.fire({
+					title: title,
+					type: "info",
+					input: inputType,
+					inputPlaceholder: GM_getValue(gmValue),
+					preConfirm: (input) => {
+						if (!input) input = defaultVal;
+
+						if (inputType == "number") input = Number(input);
+						else if (inputType == "falsy") input == Boolean(input);
+
+						GM_setValue(gmValue, input);
+					},
+				});
+			});
+
+			_inputEl.parentElement.appendChild(inputEl);
+
+			return inputEl;
+		}
+
+		function injectSettings() {
+			settings.forEach((s) => {
+				if (s.type == "falsy")
+					createSwitch(s.title, s.description, s.gmValue);
+				else {
+					createInput(
+						s.title,
+						s.description,
+						s.gmValue,
+						s?.type,
+						s.default,
+					);
+				}
+			});
+		}
+
+		injectSettings();
+		unsafeWindow.Livewire.hook("morphed", injectSettings);
+	}
+}
+
 async function pilgrim() {
 	if (/travel*/g.test(location.href)) {
 		// Create action button
@@ -192,7 +356,7 @@ async function pilgrim() {
 			} else {
 				changeState(btn, true);
 
-				if (stepCount > 5) {
+				if (stepCount > 5 && GM_getValue("pilgrimAlert")) {
 					let totalSeconds = Math.floor(
 						(Date.now() - timeSpent) / 1000,
 					);
@@ -231,7 +395,11 @@ async function pilgrim() {
 								? node
 								: node.querySelector?.("span");
 
-						if (waveEl && waveEl.textContent.includes("Wave")) {
+						if (
+							waveEl &&
+							waveEl.textContent.includes("Wave") &&
+							GM_getValue("pilgrimWave")
+						) {
 							waveEl.click();
 							waveEl.parentElement.remove();
 						}
@@ -601,7 +769,7 @@ async function envoy() {
 							(e) => 1,
 							"img",
 							mainDiv.parentElement,
-						),
+						).src,
 						date: parseTime(e.textContent.trim()),
 					});
 				});
@@ -631,34 +799,6 @@ async function envoy() {
 			});
 		}
 	}
-
-	// Default settings
-	if (!GM_getValue("timeout")) GM_setValue("timeout", 30);
-	if (!GM_getValue("interval")) GM_setValue("interval", 2);
-
-	GM_registerMenuCommand(
-		"Set when upcoming world boss notification start",
-		function () {
-			let value = prompt(
-				"Set how soon the notifications should start (in minutes)",
-				30,
-			);
-
-			if (value) GM_setValue("timeout", value);
-		},
-	);
-
-	GM_registerMenuCommand(
-		"Set upcoming world boss notification interval",
-		function () {
-			let value = prompt(
-				"Set how often the notification should appear when the world boss is soon (in minutes)",
-				2,
-			);
-
-			if (value) GM_setValue("interval", value);
-		},
-	);
 
 	/**
 	 * Check if any boss needs a notification
@@ -693,12 +833,12 @@ async function envoy() {
 	const BOSSES = GM_getValue("boss_cache").bosses;
 
 	// First page load check
-	handleNotify(BOSSES, GM_getValue("timeout"));
+	handleNotify(BOSSES, GM_getValue("envoyTimeout"));
 
 	// Regular check
 	setInterval(
-		() => handleNotify(BOSSES, GM_getValue("timeout")),
-		GM_getValue("interval") * 60 * 1000,
+		() => handleNotify(BOSSES, GM_getValue("envoyTimeout")),
+		GM_getValue("envoyInterval") * 60 * 1000,
 	);
 }
 
@@ -734,42 +874,49 @@ async function knight() {
 		if (energyPoints > 0) {
 			i_displayToast(ICONS.Boss, "Knight started", "success", 2);
 
-			// Collect opponents
-			async function generatePlayers(energy = 5) {
-				const users = [];
+			async function generatePlayers(energy) {
+				var users = [];
 
-				for (let i = 0; i < Math.ceil(energy / 5); i++) {
-					await subDoc("/battle/colosseum", (doc) => {
-						[...doc.querySelector("tbody").children].forEach(
-							(e) => {
-								users.push({
-									id: Number(
-										/[0-9]+/g.exec(
-											textSearch("Attack", "a", e),
-										)[0],
-									),
-									level: Number(
-										/Level ([0-9]+)/g.exec(
-											textSearch(
-												"Level",
-												"div",
-												e,
-											).textContent.replaceAll(",", ""),
-										)[1],
-									),
-								});
+				// Run inside /battle so the request looks like it came from the actual page
+				await subDoc("/battle", async (doc, win) => {
+					while (
+						!win.game_data?.battle?.colosseum
+							?.generate_opponents_endpoint
+					)
+						await new Promise((r) => setTimeout(r, 100));
+
+					for (let i = 0; i < Math.ceil(energy / 10); i++) {
+						await win.game.fetch({
+							endpoint:
+								win.game_data.battle.colosseum
+									.generate_opponents_endpoint,
+
+							body: {
+								min_level: null,
+								max_level: GM_getValue("knightLvl"),
+								min_gold: null,
+								only_in_guild_war: GM_getValue("knightWar"),
+								has_bounty: false,
 							},
-						);
 
-						users.sort((a, b) => {
-							return a.level - b.level;
+							on_success: function (e) {
+								users = Array.from(
+									new Map(
+										[...users, ...e["opponents"]].map(
+											(opp) => [opp.id, opp],
+										),
+									).values(),
+								);
+							},
 						});
-					});
 
-					users.splice(-5);
+						await asyncWait(600);
+					}
+				});
 
-					await asyncWait(600);
-				}
+				users.sort((a, b) => {
+					return a.level - b.level;
+				});
 
 				users.splice(energy);
 
@@ -785,8 +932,14 @@ async function knight() {
 				for (let i = 0; i < targetUsers.length; i++) {
 					if (breakLoop) break;
 
+					const currentUser = targetUsers[i];
+					const userName =
+						/<span>.*<span\s?>(.*)<\/span>\s?<\/span>/g.exec(
+							currentUser.name,
+						)?.[1] || "Opponent";
+
 					await subDoc(
-						"/user/attack/" + targetUsers[i].id,
+						"/user/attack/" + currentUser.id,
 						async (doc, win) => {
 							let oppDefeated = false;
 
@@ -813,10 +966,8 @@ async function knight() {
 													killCount++;
 
 													i_displayToast(
-														doc.querySelectorAll(
-															"div#npcImg > img",
-														)[1]?.src,
-														`Killed ${doc.querySelectorAll("a.truncate")[0]?.textContent}`,
+														currentUser?.avatar_url,
+														`Killed ${userName}`,
 														"success",
 														5,
 														true,
@@ -830,10 +981,8 @@ async function knight() {
 														breakLoop = 1;
 
 														i_displayToast(
-															doc.querySelectorAll(
-																"div#npcImg > img",
-															)[1]?.src,
-															`Died attacking ${doc.querySelectorAll("a.truncate")[0]?.textContent}`,
+															currentUser?.avatar_url,
+															`Died attacking ${userName}`,
 															"error",
 															5,
 															true,
@@ -844,19 +993,17 @@ async function knight() {
 														)
 													) {
 														i_displayToast(
-															doc.querySelectorAll(
-																"div#npcImg > img",
-															)[1]?.src,
-															`Could not attack ${doc.querySelectorAll("a.truncate")[0]?.textContent}, skipping`,
+															currentUser?.avatar_url,
+															`Could not attack ${userName}, skipping`,
 															"info",
 															5,
 															true,
 														);
 
-														targetUsers.concat(
-															await generatePlayers(
+														targetUsers.push(
+															...(await generatePlayers(
 																1,
-															),
+															)),
 														);
 													} else {
 														breakLoop = 1;
@@ -1043,6 +1190,44 @@ async function energyMax() {
 	}
 }
 
+async function statMax() {
+	if (/user\/character/g.test(location.href) && GM_getValue("statMax")) {
+		unsafeWindow.upgradeStat = (type) => {
+			let add = Number(
+				document.querySelector("#available_points").textContent,
+			);
+
+			fetch("/api/user/upgrade/" + type, {
+				method: "POST",
+				headers: {
+					Accept: "application/json",
+					"Content-Type": "application/json",
+				},
+				body: JSON.stringify({
+					_token: token,
+					amount: add || 0,
+				}),
+			})
+				.then((r) => r.json())
+				.then((res) => {
+					if (res?.type == "success") {
+						document.getElementById(type + "_stat").innerHTML =
+							unsafeWindow.format_number(res.new_stat_amount);
+						document.getElementById("available_points").innerHTML =
+							unsafeWindow.format_number(res.available_stats) ||
+							"0";
+
+						t_displayToast(
+							`Added ${add} to ${type.toUpperCase()}`,
+							"success",
+							2.3,
+						);
+					}
+				});
+		};
+	}
+}
+
 (async function () {
 	"use strict";
 
@@ -1061,10 +1246,80 @@ async function energyMax() {
 		);
 	}
 
+	const SETTINGS = [
+		{
+			title: "Envoy Earliest Notification",
+			description:
+				"Set when the earliest world boss notification should appear (in minutes)",
+			gmValue: "envoyTimeout",
+			type: "number",
+			default: 30,
+		},
+		{
+			title: "Envoy Notification Interval",
+			description:
+				"Set how often a notification should appear for the upcoming world boss (in minutes)",
+			gmValue: "envoyInterval",
+			type: "number",
+			default: 2,
+		},
+		{
+			title: "Knight Max Level",
+			description: "Set Knight's max opponent level",
+			gmValue: "knightLvl",
+			type: "number",
+			default: 700,
+		},
+		{
+			title: "Knight Guild War",
+			description:
+				"Enable/disable Knight attacking exclusively opponents of war",
+			gmValue: "knightWar",
+			type: "falsy",
+			default: false,
+		},
+		{
+			title: "Pilgrim Auto Wave",
+			description: "Enable/disable Pilgrim auto-waving to players",
+			gmValue: "pilgrimWave",
+			type: "falsy",
+			default: true,
+		},
+		{
+			title: "Pilgrim Journey Alert",
+			description:
+				"Enable/disable Pilgrim progress alerts after completing a journey",
+			gmValue: "pilgrimAlert",
+			type: "falsy",
+			default: true,
+		},
+		{
+			title: "Stat Max",
+			description:
+				"Enable/disable automatically using all points when trying to add to a stat",
+			gmValue: "statMax",
+			type: "falsy",
+			default: false,
+		},
+	];
+
+	GM_registerMenuCommand("Factory reset settings", () => {
+		SETTINGS.forEach((s) => {
+			GM_setValue(s.gmValue, s.default);
+		});
+	});
+
+	// Simple snippet to skip over stupid errors from keys not existing
+	SETTINGS.forEach((s) => {
+		if (!GM_getValue(s.gmValue)) GM_setValue(s.gmValue, s.default);
+	});
+
 	// Load tools
 	try {
-		[pilgrim, warden, envoy, knight, sentinel, energyMax].forEach((f) =>
-			f.call(),
+		codex(SETTINGS);
+
+		[pilgrim, warden, envoy, knight, sentinel, energyMax, statMax].forEach(
+			(f) => f.call(),
 		);
 	} catch (e) {
 		t_displayToast("Error loading Knave tools", "error", 1e10);
