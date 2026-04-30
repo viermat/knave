@@ -1,11 +1,12 @@
 // ==UserScript==
 // @name         Knave
-// @version      4
+// @version      4.1
 // @description  SimpleMMO toolkit
 // @author       viermat (https://github.com/viermat)
 // @match        https://web.simple-mmo.com/*
 // @icon         https://web.simple-mmo.com/favicon-32x32.png
 // @run-at       document-end
+// @grant 		 GM_addValueChangeListener
 // @grant        GM_registerMenuCommand
 // @grant        GM_setValue
 // @grant        GM_getValue
@@ -153,11 +154,20 @@ function textSearch(searchStr, queryElem = "*", doc = document) {
 	return condSearch((e) => e.textContent.includes(searchStr), queryElem, doc);
 }
 
+// Simpler name
+this.getSTG = GM_getValue;
+this.setSTG = GM_setValue;
+
 const ICONS = {
 	Attack: "/img/icons/W_Axe008.png",
 	Boss: "/img/sprites/bosses/16.png",
 	Energy: "/img/icons/S_Thunder01.png",
 	Book: "/img/icons/W_Book01.png",
+
+	Wave: "/img/icons/one/icon088.png",
+	NPC: "/img/icons/S_Earth03.png",
+	Step: "/img/icons/A_Shoes01.png",
+	Clock: "/img/icons/I_Clock.png",
 };
 
 async function codex(settings) {
@@ -231,17 +241,18 @@ async function codex(settings) {
 				}
 			}
 
-			check(Boolean(GM_getValue(gmValue)));
+			check(Boolean(getSTG(gmValue)));
 
 			switchBtn.addEventListener("click", () => {
 				switchState = !switchState;
 
-				GM_setValue(gmValue, switchState);
+				setSTG(gmValue, switchState);
 				check(switchState);
 			});
 
 			_switchEl.parentElement.appendChild(switchEl);
 
+			switchEl.classList.add("knave-stg");
 			return switchEl;
 		}
 
@@ -286,38 +297,49 @@ async function codex(settings) {
 					title: title,
 					type: "info",
 					input: inputType,
-					inputPlaceholder: GM_getValue(gmValue),
+					inputPlaceholder: getSTG(gmValue),
 					preConfirm: (input) => {
 						if (!input) input = defaultVal;
 
 						if (inputType == "number") input = Number(input);
-						else if (inputType == "falsy") input == Boolean(input);
 
-						GM_setValue(gmValue, input);
+						setSTG(gmValue, input);
 					},
 				});
 			});
 
 			_inputEl.parentElement.appendChild(inputEl);
 
+			inputEl.classList.add("knave-stg");
 			return inputEl;
 		}
 
 		function injectSettings() {
+			document.querySelectorAll(".knave-stg").forEach((e) => e.remove());
+
 			settings.forEach((s) => {
-				if (s.type == "falsy")
-					createSwitch(s.title, s.description, s.gmValue);
+				const commonArgs = [s.title, s.description, s.gmValue];
+
+				if (s.depends) {
+					if (!getSTG(s.depends)) return;
+
+					commonArgs[0] = `-> ${s.title}`;
+				}
+
+				if (s.type == "falsy") createSwitch(...commonArgs);
 				else {
-					createInput(
-						s.title,
-						s.description,
-						s.gmValue,
-						s?.type,
-						s.default,
-					);
+					createInput(...commonArgs, s.type, s.default);
 				}
 			});
 		}
+
+		settings.forEach((s) => {
+			if (!s.depends) {
+				GM_addValueChangeListener(s.gmValue, () => {
+					injectSettings();
+				});
+			}
+		});
 
 		injectSettings();
 		unsafeWindow.Livewire.hook("morphed", injectSettings);
@@ -341,67 +363,114 @@ async function pilgrim() {
 			"button",
 		);
 
-		var timeSpent = 0;
-		var stepCount = 0;
-		var killCount = 0;
+		const stats = {
+			time: 0,
+			steps: 0,
+			kills: 0,
+			waves: 0,
+		};
 
 		function switchState() {
-			window.isOn = !window.isOn;
+			window.isPilgrimOn = !window.isPilgrimOn;
 
-			if (window.isOn) {
-				if (timeSpent == 0) timeSpent = new Date();
+			if (window.isPilgrimOn) {
+				if (stats.time == 0) stats.time = new Date();
 
 				changeState(btn);
 				travel();
+
+				if (getSTG("pilgrimExpire"))
+					window.pilgrimExpire = setTimeout(
+						() => {
+							if (window.isPilgrimOn) switchState();
+						},
+						getSTG("pilgrimExpireT") * 60 * 1000,
+					);
 			} else {
 				changeState(btn, true);
 
-				if (stepCount > 5 && GM_getValue("pilgrimAlert")) {
+				if (stats.steps > 5 && getSTG("pilgrimAlert")) {
 					let totalSeconds = Math.floor(
-						(Date.now() - timeSpent) / 1000,
+						(Date.now() - stats.time) / 1000,
 					);
+
+					const rows = [
+						["Steps", stats.steps, ICONS.Step],
+						["NPCs killed", stats.kills, ICONS.NPC],
+						[
+							"Time",
+							`${Math.floor(totalSeconds / 60)}m ${totalSeconds % 60}s`,
+							ICONS.Clock,
+						],
+					];
+
+					if (getSTG("pilgrimWave"))
+						rows.push(["Waves", stats.waves, ICONS.Wave]);
 
 					Swal.fire({
 						title: "Journey completed",
 						type: "success",
-						html: `<div style="text-align: center">Steps: ${stepCount}
-						<br>NPCs killed: ${killCount}
-						<br>Time stepping: ${Math.floor(totalSeconds / 60)}m ${totalSeconds % 60}s
-						</div>`,
-						timer: 15 * 1000,
+						html: `
+							<div class="stats-grid" style="
+								display: grid;
+								grid-template-columns: auto auto;
+								gap: 0.5em 1em;
+								text-align: left;
+								margin: 0 auto;
+								max-width: 15em;
+							">
+								${rows
+									.map(
+										([label, value, icon]) => `
+											<span><img width="30" height="30" src=${icon} /> <b>${label}</b></span>
+											<span class="value">${value}</span>
+										`,
+									)
+									.join("")}
+							</div>
+						`,
+						timer: getSTG("pilgrimAlertT") ? 30 * 1000 : 0,
 					});
 				}
 
-				timeSpent = 0;
-				stepCount = 0;
-				killCount = 0;
+				stats.time = 0;
+				stats.steps = 0;
+				stats.kills = 0;
+				stats.waves = 0;
+
+				if (getSTG("pilgrimExpire")) clearTimeout(window.pilgrimExpire);
 			}
 		}
 
 		// MutObs for other things
 		new MutationObserver(async (mList) => {
 			for (const m of mList) {
-				if (m.type === "childList" && window.isOn) {
+				if (m.type === "childList" && window.isPilgrimOn) {
 					let npc = null;
 
 					// Check only for added nodes
 					for (const node of m.addedNodes) {
 						if (!(node instanceof HTMLElement)) continue;
 
-						// Auto wave
-						const waveEl =
-							node.matches("span") &&
-							node.textContent.includes("Wave")
+						// Kill if dead
+						const healEl =
+							node.matches("a") &&
+							node.textContent.includes("heal?")
 								? node
-								: node.querySelector?.("span");
+								: node.querySelector?.("a");
 
-						if (
-							waveEl &&
-							waveEl.textContent.includes("Wave") &&
-							GM_getValue("pilgrimWave")
-						) {
-							waveEl.click();
-							waveEl.parentElement.remove();
+						if (healEl && healEl.textContent.includes("heal?")) {
+							window.isPilgrimOn = false;
+							changeState(btn, true);
+
+							Swal.fire({
+								title: "Warning",
+								type: "warning",
+
+								text: "Pilgrim has stopped. Heal and turn on again to continue",
+							});
+
+							return;
 						}
 
 						// Kill if bot detection
@@ -415,17 +484,35 @@ async function pilgrim() {
 							botEl &&
 							botEl.textContent.includes("I'm a person! Promise!")
 						) {
-							window.isOn = false;
+							window.isPilgrimOn = false;
 							changeState(btn, true);
 
 							Swal.fire({
 								title: "Warning",
 								type: "warning",
 
-								text: "Pilgrim has stopped. Complete human verification and turn on again",
+								text: "Pilgrim has stopped. Complete human verification and turn on again to continue",
 							});
 
 							return;
+						}
+
+						// Auto wave
+						const waveEl =
+							node.matches("span") &&
+							node.textContent.includes("Wave")
+								? node
+								: node.querySelector?.("span");
+
+						if (
+							waveEl &&
+							waveEl.textContent.includes("Wave") &&
+							getSTG("pilgrimWave")
+						) {
+							waveEl.click();
+							waveEl.parentElement.remove();
+
+							stats.waves++;
 						}
 
 						// Check for NPCs
@@ -490,7 +577,7 @@ async function pilgrim() {
 														true,
 													);
 
-													killCount++;
+													stats.kills++;
 												} else {
 													if (
 														data.title.includes(
@@ -547,7 +634,7 @@ async function pilgrim() {
 
 		// Step button function
 		async function travel() {
-			if (!stepBtn.disabled && window.isOn && !window.attacking) {
+			if (!stepBtn.disabled && window.isPilgrimOn && !window.attacking) {
 				await asyncWait(400 + Math.floor(Math.random() * 500));
 
 				window.fakeX = 800 + Math.floor(Math.random() * 90);
@@ -555,7 +642,7 @@ async function pilgrim() {
 
 				stepBtn.click();
 
-				stepCount++;
+				stats.steps++;
 			}
 		}
 
@@ -600,9 +687,9 @@ async function pilgrim() {
 
 async function warden() {
 	// Check for API key
-	if (!GM_getValue("api_key")) {
+	if (!getSTG("api_key")) {
 		await subDoc("https://web.simple-mmo.com/p-api/home", (doc) => {
-			GM_setValue(
+			setSTG(
 				"api_key",
 				condSearch((e) => e.type == "text", "input", doc).value,
 			);
@@ -620,7 +707,7 @@ async function warden() {
 			},
 
 			body: JSON.stringify({
-				api_key: GM_getValue("api_key"),
+				api_key: getSTG("api_key"),
 			}),
 		}).then((r) => {
 			return r.json();
@@ -628,12 +715,9 @@ async function warden() {
 	};
 
 	// Cache system
-	if (
-		!GM_getValue("warden_cache") ||
-		GM_getValue("warden_cache").stats.error
-	) {
+	if (!getSTG("warden_cache") || getSTG("warden_cache").stats.error) {
 		await postReq("player/me").then((s) => {
-			GM_setValue("warden_cache", {
+			setSTG("warden_cache", {
 				lastCache: new Date().getTime(),
 				stats: s,
 			});
@@ -645,13 +729,12 @@ async function warden() {
 
 	// Check if user is attacking another user
 	if (/\/user\/attack\/[0-9]+/g.test(location.href)) {
-		if (GM_getValue("warden_cache")) {
-			let diff =
-				new Date(GM_getValue("warden_cache").lastCache) - new Date();
+		if (getSTG("warden_cache")) {
+			let diff = new Date(getSTG("warden_cache").lastCache) - new Date();
 
 			if (diff <= -2 * 60 * 1000) {
 				await postReq("player/me").then((s) => {
-					GM_setValue("warden_cache", {
+					setSTG("warden_cache", {
 						lastCache: new Date().getTime(),
 						stats: s,
 					});
@@ -660,7 +743,7 @@ async function warden() {
 		}
 
 		// Calculate user's and opponents' strength and defence
-		const meData = GM_getValue("warden_cache").stats;
+		const meData = getSTG("warden_cache").stats;
 		const meStr = meData.str + meData.bonus_str;
 		const meDef = meData.def + meData.bonus_def;
 
@@ -780,19 +863,19 @@ async function envoy() {
 	}
 
 	// Cache system
-	if (!GM_getValue("boss_cache")) {
+	if (!getSTG("boss_cache")) {
 		await cacheBosses().then((b) => {
-			GM_setValue("boss_cache", {
+			setSTG("boss_cache", {
 				lastCache: new Date().getTime(),
 				bosses: b,
 			});
 		});
 	} else {
-		let diff = new Date(GM_getValue("boss_cache").lastCache) - new Date();
+		let diff = new Date(getSTG("boss_cache").lastCache) - new Date();
 
 		if (diff <= -30 * 60 * 1000) {
 			cacheBosses().then((b) => {
-				GM_setValue("boss_cache", {
+				setSTG("boss_cache", {
 					lastCache: new Date().getTime(),
 					bosses: b,
 				});
@@ -830,15 +913,15 @@ async function envoy() {
 		});
 	}
 
-	const BOSSES = GM_getValue("boss_cache").bosses;
+	const BOSSES = getSTG("boss_cache").bosses;
 
 	// First page load check
-	handleNotify(BOSSES, GM_getValue("envoyTimeout"));
+	handleNotify(BOSSES, getSTG("envoyTimeout"));
 
 	// Regular check
 	setInterval(
-		() => handleNotify(BOSSES, GM_getValue("envoyTimeout")),
-		GM_getValue("envoyInterval") * 60 * 1000,
+		() => handleNotify(BOSSES, getSTG("envoyTimeout")),
+		getSTG("envoyInterval") * 60 * 1000,
 	);
 }
 
@@ -869,194 +952,216 @@ async function knight() {
 
 		// Get EP count
 		const data = await getPlayerData();
+
 		var energyPoints = data.energy;
 
-		if (energyPoints > 0) {
-			i_displayToast(ICONS.Boss, "Knight started", "success", 2);
+		if (data.current_hp > 0)
+			if (energyPoints > 0) {
+				i_displayToast(ICONS.Boss, "Knight started", "success", 2);
 
-			async function generatePlayers(energy) {
-				var users = [];
+				async function generatePlayers(energy) {
+					var users = [];
 
-				// Run inside /battle so the request looks like it came from the actual page
-				await subDoc("/battle", async (doc, win) => {
-					while (
-						!win.game_data?.battle?.colosseum
-							?.generate_opponents_endpoint
-					)
-						await new Promise((r) => setTimeout(r, 100));
+					// Run inside /battle so the request looks like it came from the actual page
+					await subDoc("/battle", async (doc, win) => {
+						while (
+							!win.game_data?.battle?.colosseum
+								?.generate_opponents_endpoint
+						)
+							await new Promise((r) => setTimeout(r, 100));
 
-					for (let i = 0; i < Math.ceil(energy / 10); i++) {
-						await win.game.fetch({
-							endpoint:
-								win.game_data.battle.colosseum
-									.generate_opponents_endpoint,
+						for (let i = 0; i < Math.ceil(energy / 10); i++) {
+							await win.game.fetch({
+								endpoint:
+									win.game_data.battle.colosseum
+										.generate_opponents_endpoint,
 
-							body: {
-								min_level: null,
-								max_level: GM_getValue("knightLvl"),
-								min_gold: null,
-								only_in_guild_war: GM_getValue("knightWar"),
-								has_bounty: false,
-							},
+								body: {
+									min_level: null,
+									max_level: getSTG("knightLvl"),
+									min_gold: null,
+									only_in_guild_war: getSTG("knightWar"),
+									has_bounty: false,
+								},
 
-							on_success: function (e) {
-								users = Array.from(
-									new Map(
-										[...users, ...e["opponents"]].map(
-											(opp) => [opp.id, opp],
-										),
-									).values(),
-								);
-							},
-						});
+								on_success: function (e) {
+									users = Array.from(
+										new Map(
+											[...users, ...e["opponents"]].map(
+												(opp) => [opp.id, opp],
+											),
+										).values(),
+									);
+								},
+							});
 
-						await asyncWait(600);
-					}
-				});
+							await asyncWait(600);
+						}
+					});
 
-				users.sort((a, b) => {
-					return a.level - b.level;
-				});
+					users.sort((a, b) => {
+						return a.level - b.level;
+					});
 
-				users.splice(energy);
+					users.splice(energy);
 
-				return users;
-			}
+					return users;
+				}
 
-			const targetUsers = await generatePlayers(energyPoints);
+				var targetUsers = [];
 
-			var killCount = 0;
-			let breakLoop = 0;
+				try {
+					targetUsers = await generatePlayers(energyPoints);
+				} catch {}
 
-			if (targetUsers.length > 0) {
-				for (let i = 0; i < targetUsers.length; i++) {
-					if (breakLoop) break;
+				var killCount = 0;
+				let breakLoop = 0;
 
-					const currentUser = targetUsers[i];
-					const userName =
-						/<span>.*<span\s?>(.*)<\/span>\s?<\/span>/g.exec(
-							currentUser.name,
-						)?.[1] || "Opponent";
+				if (targetUsers.length > 0) {
+					for (let i = 0; i < targetUsers.length; i++) {
+						if (breakLoop) break;
 
-					await subDoc(
-						"/user/attack/" + currentUser.id,
-						async (doc, win) => {
-							let oppDefeated = false;
+						const currentUser = targetUsers[i];
 
-							// Patch XHR (no idea why attack doesn't use fetch)
-							const oldSend = win.XMLHttpRequest.prototype.send;
+						var tempEl = document.createElement(null);
+						tempEl.innerHTML = currentUser.name;
 
-							win.XMLHttpRequest.prototype.send = function (
-								body,
-							) {
-								this.addEventListener(
-									"load",
-									async function () {
-										let res = this?.responseText;
+						const userName =
+							tempEl.querySelector("a > span > span")
+								.textContent || "Opponent";
 
-										try {
-											res = JSON.parse(this.responseText);
+						await subDoc(
+							"/user/attack/" + currentUser.id,
+							async (doc, win) => {
+								let oppDefeated = false;
 
-											let type = res?.type;
+								// Patch XHR (no idea why attack doesn't use fetch)
+								const oldSend =
+									win.XMLHttpRequest.prototype.send;
 
-											if (type) {
-												oppDefeated = true;
+								win.XMLHttpRequest.prototype.send = function (
+									body,
+								) {
+									this.addEventListener(
+										"load",
+										async function () {
+											let res = this?.responseText;
 
-												if (type == "success") {
-													killCount++;
+											try {
+												res = JSON.parse(
+													this.responseText,
+												);
 
-													i_displayToast(
-														currentUser?.avatar_url,
-														`Killed ${userName}`,
-														"success",
-														5,
-														true,
-													);
-												} else if (type === "error") {
-													if (
-														res.result.includes(
-															"defeated",
-														)
-													) {
-														breakLoop = 1;
+												let type = res?.type;
+
+												if (type) {
+													oppDefeated = true;
+
+													if (type == "success") {
+														killCount++;
 
 														i_displayToast(
 															currentUser?.avatar_url,
-															`Died attacking ${userName}`,
-															"error",
+															`Killed ${userName}`,
+															"success",
 															5,
 															true,
 														);
 													} else if (
-														res.result.includes(
-															"half health",
-														)
+														type === "error"
 													) {
-														i_displayToast(
-															currentUser?.avatar_url,
-															`Could not attack ${userName}, skipping`,
-															"info",
-															5,
-															true,
-														);
+														if (
+															res.result.includes(
+																"defeated",
+															)
+														) {
+															breakLoop = 1;
 
-														targetUsers.push(
-															...(await generatePlayers(
-																1,
-															)),
-														);
-													} else {
-														breakLoop = 1;
+															i_displayToast(
+																currentUser?.avatar_url,
+																`Died attacking ${userName}`,
+																"error",
+																5,
+																true,
+															);
+														} else if (
+															res.result.includes(
+																"half health",
+															)
+														) {
+															i_displayToast(
+																currentUser?.avatar_url,
+																`Could not attack ${userName}, skipping`,
+																"info",
+																5,
+																true,
+															);
 
-														t_displayToast(
-															`Error attacking: ${data.title}`,
-															"error",
-															10,
-														);
+															targetUsers.push(
+																...(await generatePlayers(
+																	1,
+																)),
+															);
+														} else {
+															breakLoop = 1;
 
-														console.error(res);
+															t_displayToast(
+																`Error attacking: ${data.title}`,
+																"error",
+																10,
+															);
+
+															console.error(res);
+														}
 													}
 												}
-											}
-										} catch {}
-									},
-								);
+											} catch {}
+										},
+									);
 
-								return oldSend.call(this, body);
-							};
+									return oldSend.call(this, body);
+								};
 
-							while (!oppDefeated) {
-								const attackBtn = doc.querySelector(
-									"button#attackButton",
-								);
+								while (!oppDefeated) {
+									const attackBtn = doc.querySelector(
+										"button#attackButton",
+									);
 
-								if (!attackBtn) break;
-								attackBtn.click();
+									if (!attackBtn) break;
+									attackBtn.click();
 
-								await asyncWait(
-									1.1 + Math.floor(Math.random() * 0.8),
-								);
-							}
-						},
+									await asyncWait(
+										1.1 + Math.floor(Math.random() * 0.8),
+									);
+								}
+							},
+						);
+
+						await asyncWait(1500 + Math.floor(Math.random() * 500));
+					}
+
+					i_displayToast(
+						ICONS.Attack,
+						`Killed ${killCount} players`,
+						"success",
+						5,
 					);
-
-					await asyncWait(1500 + Math.floor(Math.random() * 500));
+				} else {
+					t_displayToast("No opponents found", "error", 2.5);
 				}
-
-				i_displayToast(
-					ICONS.Attack,
-					`Killed ${killCount} players`,
-					"success",
-					5,
+			} else {
+				t_displayToast(
+					"You don't have enough energy to use Knight",
+					"error",
+					2.5,
 				);
 			}
-		} else {
+		else
 			t_displayToast(
-				"You don't have enough energy to use Knight",
+				"You don't have enough health to use Knight",
 				"error",
 				2.5,
 			);
-		}
 
 		btn.classList.remove("disabled");
 		changeState(btn, true);
@@ -1191,7 +1296,7 @@ async function energyMax() {
 }
 
 async function statMax() {
-	if (/user\/character/g.test(location.href) && GM_getValue("statMax")) {
+	if (/user\/character/g.test(location.href) && getSTG("statMax")) {
 		unsafeWindow.upgradeStat = (type) => {
 			let add = Number(
 				document.querySelector("#available_points").textContent,
@@ -1294,9 +1399,34 @@ async function statMax() {
 			default: true,
 		},
 		{
+			title: "Pilgrim Journey Alert Timeout",
+			description:
+				"Enable/disable Pilgrim progress alerts disappearing after 30 seconds",
+			gmValue: "pilgrimAlertT",
+			type: "falsy",
+			default: true,
+			depends: "pilgrimAlert",
+		},
+		{
+			title: "Pilgrim Autostop",
+			description:
+				"Enable/disable Pilgrim auto stopping after specified duration",
+			gmValue: "pilgrimExpire",
+			type: "falsy",
+			default: false,
+		},
+		{
+			title: "Pilgrim Autostop Timeout",
+			description: "Set Pilgrim autostop timeout (in minutes)",
+			gmValue: "pilgrimExpireT",
+			type: "number",
+			default: 30,
+			depends: "pilgrimExpire",
+		},
+		{
 			title: "Stat Max",
 			description:
-				"Enable/disable automatically using all points when trying to add to a stat",
+				"Enable/disable automatically using all points when adding to a stat",
 			gmValue: "statMax",
 			type: "falsy",
 			default: false,
@@ -1305,13 +1435,14 @@ async function statMax() {
 
 	GM_registerMenuCommand("Factory reset settings", () => {
 		SETTINGS.forEach((s) => {
-			GM_setValue(s.gmValue, s.default);
+			setSTG(s.gmValue, s.default);
 		});
 	});
 
 	// Simple snippet to skip over stupid errors from keys not existing
 	SETTINGS.forEach((s) => {
-		if (!GM_getValue(s.gmValue)) GM_setValue(s.gmValue, s.default);
+		let value = getSTG(s.gmValue);
+		if (value === undefined || value === null) setSTG(s.gmValue, s.default);
 	});
 
 	// Load tools
