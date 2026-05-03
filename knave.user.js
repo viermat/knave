@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Knave
-// @version      4.1
+// @version      4.2
 // @description  SimpleMMO toolkit
 // @author       viermat (https://github.com/viermat)
 // @match        https://web.simple-mmo.com/*
@@ -169,6 +169,8 @@ const ICONS = {
 	Step: "/img/icons/A_Shoes01.png",
 	Clock: "/img/icons/I_Clock.png",
 };
+
+const CompletedEvent = new CustomEvent("completed");
 
 async function codex(settings) {
 	if (/\/preferences\/customisation*/g.test(location.href)) {
@@ -370,6 +372,58 @@ async function pilgrim() {
 			waves: 0,
 		};
 
+		async function autoHandler() {
+			const data = await getPlayerData();
+
+			const half = getSTG("pilgrimAutoH");
+
+			if (getSTG("pilgrimAutoK") && !window.isSentinelOn) {
+				if (
+					data.energy >=
+					(half ? Math.floor(data.max_energy / 2) : data.max_energy)
+				) {
+					window.isPilgrimOn = false;
+
+					document.querySelector("#knaveKnight").click();
+
+					window.addEventListener(
+						"completed",
+						() => {
+							if (!window.isPilgrimOn) {
+								window.isPilgrimOn = true;
+								travel();
+							}
+						},
+						{ once: true },
+					);
+				}
+			}
+
+			if (getSTG("pilgrimAutoS") && !window.isKnightOn) {
+				if (
+					data.quest_points >=
+					(half
+						? Math.floor(data.max_quest_points / 2)
+						: data.max_quest_points)
+				) {
+					window.isPilgrimOn = false;
+
+					document.querySelector("#knaveSentinel").click();
+
+					window.addEventListener(
+						"completed",
+						() => {
+							if (!window.isPilgrimOn) {
+								window.isPilgrimOn = true;
+								travel();
+							}
+						},
+						{ once: true },
+					);
+				}
+			}
+		}
+
 		function switchState() {
 			window.isPilgrimOn = !window.isPilgrimOn;
 
@@ -386,7 +440,18 @@ async function pilgrim() {
 						},
 						getSTG("pilgrimExpireT") * 60 * 1000,
 					);
+
+				if (getSTG("pilgrimAuto")) {
+					autoHandler();
+
+					window.pilgrimAuto = setInterval(
+						() => autoHandler(),
+						2 * 1000 * 60,
+					);
+				}
 			} else {
+				clearInterval(window.pilgrimAuto);
+
 				changeState(btn, true);
 
 				if (stats.steps > 5 && getSTG("pilgrimAlert")) {
@@ -586,6 +651,16 @@ async function pilgrim() {
 													) {
 														t_displayToast(
 															`Died atacking: ${data.title}`,
+															"error",
+															5,
+														);
+													} else if (
+														data.title.includes(
+															"Hold up!",
+														)
+													) {
+														t_displayToast(
+															`You are dead`,
 															"error",
 															5,
 														);
@@ -816,46 +891,49 @@ async function envoy() {
 					"div.p-4 > div > div.ml-3",
 				);
 
-				bossArr.push({
-					name: earliestBoss
-						.querySelector(".text-gray-900")
-						.textContent.trim(),
-					level: textSearch(
-						"Level",
-						"p",
-						earliestBoss,
-					).textContent.trim(),
-					avatar: earliestBoss.parentElement.querySelector(
-						"div.flex-shrink-0 > img",
-					).src,
-					date: parseTime(
-						earliestBoss
-							.querySelector("p.text-gray-400")
-							.textContent.trim(),
-					),
-				});
-
-				// Push rest of the bosses
-				doc.querySelectorAll(
-					"div.truncate > div:nth-child(3) > div",
-				).forEach((e) => {
-					let mainDiv = e.closest(".truncate");
-
+				if (earliestBoss == null) resolve(bossArr);
+				else {
 					bossArr.push({
-						name: mainDiv
-							.querySelector(".font-bold")
+						name: earliestBoss
+							.querySelector(".text-gray-900")
 							.textContent.trim(),
-						level: mainDiv
-							.querySelector(".font-normal")
-							.textContent.trim(),
-						avatar: condSearch(
-							(e) => 1,
-							"img",
-							mainDiv.parentElement,
+						level: textSearch(
+							"Level",
+							"p",
+							earliestBoss,
+						).textContent.trim(),
+						avatar: earliestBoss.parentElement.querySelector(
+							"div.flex-shrink-0 > img",
 						).src,
-						date: parseTime(e.textContent.trim()),
+						date: parseTime(
+							earliestBoss
+								.querySelector("p.text-gray-400")
+								.textContent.trim(),
+						),
 					});
-				});
+
+					// Push rest of the bosses
+					doc.querySelectorAll(
+						"div.truncate > div:nth-child(3) > div",
+					).forEach((e) => {
+						let mainDiv = e.closest(".truncate");
+
+						bossArr.push({
+							name: mainDiv
+								.querySelector(".font-bold")
+								.textContent.trim(),
+							level: mainDiv
+								.querySelector(".font-normal")
+								.textContent.trim(),
+							avatar: condSearch(
+								(e) => 1,
+								"img",
+								mainDiv.parentElement,
+							).src,
+							date: parseTime(e.textContent.trim()),
+						});
+					});
+				}
 
 				resolve(bossArr);
 			});
@@ -939,232 +1017,266 @@ async function knight() {
 	btnSpan.textContent = "Knight";
 	btn.style.cursor = "pointer";
 
+	btn.setAttribute("id", "knaveKnight");
+
 	// Repurpose "a" element into a button
 	btn.removeAttribute("href");
 	btn.addEventListener("click", async (e) => {
-		if (btn.classList.contains("disabled")) {
-			e.preventDefault();
+		if (window.isPilgrimOn) {
+			t_displayToast(
+				"Can't use Knight while Pilgrim is running",
+				"error",
+				5,
+			);
 			return;
 		}
 
-		btn.classList.add("disabled");
-		changeState(btn);
+		if (window.isSentinelOn) {
+			t_displayToast(
+				"Can't use Knight while Sentinel is running",
+				"error",
+				5,
+			);
+			return;
+		}
 
-		// Get EP count
-		const data = await getPlayerData();
+		if (window.isKnightOn) {
+			window.isKnightOn = false;
+		} else {
+			function killKnight() {
+				window.isKnightOn = false;
 
-		var energyPoints = data.energy;
+				window.dispatchEvent(CompletedEvent);
+			}
 
-		if (data.current_hp > 0)
-			if (energyPoints > 0) {
-				i_displayToast(ICONS.Boss, "Knight started", "success", 2);
+			changeState(btn);
 
-				async function generatePlayers(energy) {
-					var users = [];
+			// Get EP count
+			const data = await getPlayerData();
 
-					// Run inside /battle so the request looks like it came from the actual page
-					await subDoc("/battle", async (doc, win) => {
-						while (
-							!win.game_data?.battle?.colosseum
-								?.generate_opponents_endpoint
-						)
-							await new Promise((r) => setTimeout(r, 100));
+			var energyPoints = data.energy;
 
-						for (let i = 0; i < Math.ceil(energy / 10); i++) {
-							await win.game.fetch({
-								endpoint:
-									win.game_data.battle.colosseum
-										.generate_opponents_endpoint,
+			if (data.current_hp > 0)
+				if (energyPoints > 0) {
+					window.isKnightOn = true;
 
-								body: {
-									min_level: null,
-									max_level: getSTG("knightLvl"),
-									min_gold: null,
-									only_in_guild_war: getSTG("knightWar"),
-									has_bounty: false,
-								},
+					i_displayToast(ICONS.Boss, "Knight started", "success", 2);
 
-								on_success: function (e) {
-									users = Array.from(
-										new Map(
-											[...users, ...e["opponents"]].map(
-												(opp) => [opp.id, opp],
-											),
-										).values(),
-									);
-								},
-							});
+					async function generatePlayers(energy) {
+						var users = [];
 
-							await asyncWait(600);
-						}
-					});
+						// Run inside /battle so the request looks like it came from the actual page
+						await subDoc("/battle", async (doc, win) => {
+							while (
+								!win.game_data?.battle?.colosseum
+									?.generate_opponents_endpoint
+							)
+								await new Promise((r) => setTimeout(r, 100));
 
-					users.sort((a, b) => {
-						return a.level - b.level;
-					});
+							for (let i = 0; i < Math.ceil(energy / 10); i++) {
+								await win.game.fetch({
+									endpoint:
+										win.game_data.battle.colosseum
+											.generate_opponents_endpoint,
 
-					users.splice(energy);
+									body: {
+										min_level: null,
+										max_level: getSTG("knightLvl"),
+										min_gold: null,
+										only_in_guild_war: getSTG("knightWar"),
+										has_bounty: false,
+									},
 
-					return users;
-				}
+									on_success: function (e) {
+										users = Array.from(
+											new Map(
+												[
+													...users,
+													...e["opponents"],
+												].map((opp) => [opp.id, opp]),
+											).values(),
+										);
+									},
+								});
 
-				var targetUsers = [];
+								await asyncWait(600);
+							}
+						});
 
-				try {
-					targetUsers = await generatePlayers(energyPoints);
-				} catch {}
+						users.sort((a, b) => {
+							return a.level - b.level;
+						});
 
-				var killCount = 0;
-				let breakLoop = 0;
+						users.splice(energy);
 
-				if (targetUsers.length > 0) {
-					for (let i = 0; i < targetUsers.length; i++) {
-						if (breakLoop) break;
-
-						const currentUser = targetUsers[i];
-
-						var tempEl = document.createElement(null);
-						tempEl.innerHTML = currentUser.name;
-
-						const userName =
-							tempEl.querySelector("a > span > span")
-								.textContent || "Opponent";
-
-						await subDoc(
-							"/user/attack/" + currentUser.id,
-							async (doc, win) => {
-								let oppDefeated = false;
-
-								// Patch XHR (no idea why attack doesn't use fetch)
-								const oldSend =
-									win.XMLHttpRequest.prototype.send;
-
-								win.XMLHttpRequest.prototype.send = function (
-									body,
-								) {
-									this.addEventListener(
-										"load",
-										async function () {
-											let res = this?.responseText;
-
-											try {
-												res = JSON.parse(
-													this.responseText,
-												);
-
-												let type = res?.type;
-
-												if (type) {
-													oppDefeated = true;
-
-													if (type == "success") {
-														killCount++;
-
-														i_displayToast(
-															currentUser?.avatar_url,
-															`Killed ${userName}`,
-															"success",
-															5,
-															true,
-														);
-													} else if (
-														type === "error"
-													) {
-														if (
-															res.result.includes(
-																"defeated",
-															)
-														) {
-															breakLoop = 1;
-
-															i_displayToast(
-																currentUser?.avatar_url,
-																`Died attacking ${userName}`,
-																"error",
-																5,
-																true,
-															);
-														} else if (
-															res.result.includes(
-																"half health",
-															)
-														) {
-															i_displayToast(
-																currentUser?.avatar_url,
-																`Could not attack ${userName}, skipping`,
-																"info",
-																5,
-																true,
-															);
-
-															targetUsers.push(
-																...(await generatePlayers(
-																	1,
-																)),
-															);
-														} else {
-															breakLoop = 1;
-
-															t_displayToast(
-																`Error attacking: ${data.title}`,
-																"error",
-																10,
-															);
-
-															console.error(res);
-														}
-													}
-												}
-											} catch {}
-										},
-									);
-
-									return oldSend.call(this, body);
-								};
-
-								while (!oppDefeated) {
-									const attackBtn = doc.querySelector(
-										"button#attackButton",
-									);
-
-									if (!attackBtn) break;
-									attackBtn.click();
-
-									await asyncWait(
-										1.1 + Math.floor(Math.random() * 0.8),
-									);
-								}
-							},
-						);
-
-						await asyncWait(1500 + Math.floor(Math.random() * 500));
+						return users;
 					}
 
-					i_displayToast(
-						ICONS.Attack,
-						`Killed ${killCount} players`,
-						"success",
-						5,
-					);
+					var targetUsers = [];
+
+					try {
+						targetUsers = await generatePlayers(energyPoints);
+					} catch {}
+
+					var killCount = 0;
+
+					if (targetUsers.length > 0) {
+						for (let i = 0; i < targetUsers.length; i++) {
+							if (!window.isKnightOn) break;
+
+							const currentUser = targetUsers[i];
+
+							var tempEl = document.createElement(null);
+							tempEl.innerHTML = currentUser.name;
+
+							const userName =
+								tempEl.querySelector("a > span > span")
+									.textContent || "Opponent";
+
+							await subDoc(
+								"/user/attack/" + currentUser.id,
+								async (doc, win) => {
+									let oppDefeated = false;
+
+									// Patch XHR (no idea why attack doesn't use fetch)
+									const oldSend =
+										win.XMLHttpRequest.prototype.send;
+
+									win.XMLHttpRequest.prototype.send =
+										function (body) {
+											this.addEventListener(
+												"load",
+												async function () {
+													let res =
+														this?.responseText;
+
+													try {
+														res = JSON.parse(
+															this.responseText,
+														);
+
+														let type = res?.type;
+
+														if (type) {
+															oppDefeated = true;
+
+															if (
+																type ==
+																	"success" ||
+																type == null
+															) {
+																killCount++;
+
+																i_displayToast(
+																	currentUser?.avatar_url,
+																	`Killed ${userName}`,
+																	"success",
+																	5,
+																	true,
+																);
+															} else if (
+																type === "error"
+															) {
+																if (
+																	res.result.includes(
+																		"defeated",
+																	)
+																) {
+																	killKnight();
+
+																	i_displayToast(
+																		currentUser?.avatar_url,
+																		`Died attacking ${userName}`,
+																		"error",
+																		5,
+																		true,
+																	);
+																} else if (
+																	res.result.includes(
+																		"half health",
+																	)
+																) {
+																	i_displayToast(
+																		currentUser?.avatar_url,
+																		`Could not attack ${userName}, skipping`,
+																		"info",
+																		5,
+																		true,
+																	);
+
+																	targetUsers.push(
+																		...(await generatePlayers(
+																			1,
+																		)),
+																	);
+																} else {
+																	killKnight();
+
+																	t_displayToast(
+																		`Error attacking: ${data.title}`,
+																		"error",
+																		10,
+																	);
+
+																	console.error(
+																		res,
+																	);
+																}
+															}
+														}
+													} catch {}
+												},
+											);
+
+											return oldSend.call(this, body);
+										};
+
+									while (!oppDefeated) {
+										const attackBtn = doc.querySelector(
+											"button#attackButton",
+										);
+
+										if (!attackBtn) break;
+										attackBtn.click();
+
+										await asyncWait(
+											1.1 +
+												Math.floor(Math.random() * 0.8),
+										);
+									}
+								},
+							);
+
+							await asyncWait(
+								1500 + Math.floor(Math.random() * 500),
+							);
+						}
+
+						i_displayToast(
+							ICONS.Attack,
+							`Killed ${killCount} players`,
+							"success",
+							5,
+						);
+					} else {
+						t_displayToast("No opponents found", "error", 2.5);
+					}
 				} else {
-					t_displayToast("No opponents found", "error", 2.5);
+					t_displayToast(
+						"You don't have enough energy to use Knight",
+						"error",
+						2.5,
+					);
 				}
-			} else {
+			else
 				t_displayToast(
-					"You don't have enough energy to use Knight",
+					"You don't have enough health to use Knight",
 					"error",
 					2.5,
 				);
-			}
-		else
-			t_displayToast(
-				"You don't have enough health to use Knight",
-				"error",
-				2.5,
-			);
 
-		btn.classList.remove("disabled");
-		changeState(btn, true);
+			changeState(btn, true);
+		}
 	});
 }
 
@@ -1182,68 +1294,106 @@ async function sentinel() {
 	btnSpan.textContent = "Sentinel";
 	btn.style.cursor = "pointer";
 
+	btn.setAttribute("id", "knaveSentinel");
+
 	// Repurpose "a" element into a button
 	btn.removeAttribute("href");
 	btn.addEventListener("click", async (e) => {
-		if (btn.classList.contains("disabled")) {
-			e.preventDefault();
+		if (window.isPilgrimOn) {
+			t_displayToast(
+				"Can't use Sentinel while Pilgrim is running",
+				"error",
+				5,
+			);
 			return;
 		}
 
-		btn.classList.add("disabled");
-		changeState(btn);
+		if (window.isKnightOn) {
+			t_displayToast(
+				"Can't use Sentinel while Knight is running",
+				"error",
+				5,
+			);
+			return;
+		}
 
-		// Enter quests
-		await subDoc("/quests", async (doc) => {
-			// Collect QP count
-			const data = await getPlayerData();
-			var questPoints = data.quest_points;
+		if (window.isSentinelOn) {
+			window.isSentinelOn = false;
+		} else {
+			function killSentinel() {
+				window.isSentinelOn = false;
 
-			if (questPoints > 0) {
-				i_displayToast(ICONS.Book, "Sentinel started", "success", 2);
+				window.dispatchEvent(CompletedEvent);
+			}
 
-				// Elements can only be queried through classes unfortunately, no IDs or accessible text
+			changeState(btn);
 
-				// Get latest quest
-				let latestQuest = await asyncQuery(
-					".relative.mt-4 > div > button",
-					doc,
-				);
+			// Enter quests
+			await subDoc("/quests", async (doc) => {
+				// Collect QP count
+				const data = await getPlayerData();
+				var questPoints = data.quest_points;
 
-				latestQuest.click();
+				if (questPoints > 0) {
+					window.isSentinelOn = true;
 
-				// Quest solver
-				for (let i = 1; i <= questPoints; i++) {
-					let performQuest = await asyncQuery(
-						".relative.mt-2 > button",
+					var questCount = 0;
+
+					i_displayToast(
+						ICONS.Book,
+						"Sentinel started",
+						"success",
+						2,
+					);
+
+					// Elements can only be queried through classes unfortunately, no IDs or accessible text
+
+					// Get latest quest
+					let latestQuest = await asyncQuery(
+						".relative.mt-4 > div > button",
 						doc,
 					);
 
-					performQuest.click();
+					latestQuest.click();
 
-					await asyncWait(1400 + Math.floor(Math.random() * 500));
+					// Quest solver
+					for (let i = 1; i <= questPoints; i++) {
+						if (!window.isSentinelOn) break;
+
+						let performQuest = await asyncQuery(
+							".relative.mt-2 > button",
+							doc,
+						);
+
+						performQuest.click();
+
+						questCount++;
+
+						await asyncWait(1400 + Math.floor(Math.random() * 500));
+					}
+
+					let img = await asyncQuery("img.h-10.w-auto", doc);
+					let title = await asyncQuery("div.text-gray-800", doc);
+
+					i_displayToast(
+						img.src,
+						`Performed ${questCount} of '${title.textContent}'`,
+						"success",
+						5,
+					);
+
+					killSentinel();
+				} else {
+					t_displayToast(
+						"You don't have enough energy to use Sentinel",
+						"error",
+						2.5,
+					);
 				}
+			});
 
-				let img = await asyncQuery("img.h-10.w-auto", doc);
-				let title = await asyncQuery("div.text-gray-800", doc);
-
-				i_displayToast(
-					img.src,
-					`Perfomed ${questPoints} of "${title.textContent}"`,
-					"success",
-					5,
-				);
-			} else {
-				t_displayToast(
-					"You don't have enough energy to use Sentinel",
-					"error",
-					2.5,
-				);
-			}
-		});
-
-		btn.classList.remove("disabled");
-		changeState(btn, true);
+			changeState(btn, true);
+		}
 	});
 }
 
@@ -1408,15 +1558,48 @@ async function statMax() {
 			depends: "pilgrimAlert",
 		},
 		{
-			title: "Pilgrim Autostop",
+			title: "Pilgrim Auto Use",
 			description:
-				"Enable/disable Pilgrim auto stopping after specified duration",
-			gmValue: "pilgrimExpire",
+				"Enable/disable Pilgrim auto attacking and auto questing",
+			gmValue: "pilgrimAuto",
 			type: "falsy",
 			default: false,
 		},
 		{
-			title: "Pilgrim Autostop Timeout",
+			title: "Pilgrim Auto Knight",
+			description: "Enable/disable Pilgrim auto attacking",
+			gmValue: "pilgrimAutoK",
+			type: "falsy",
+			default: true,
+			depends: "pilgrimAuto",
+		},
+		{
+			title: "Pilgrim Auto Sentinel",
+			description: "Enable/disable Pilgrim auto questing",
+			gmValue: "pilgrimAutoS",
+			type: "falsy",
+			default: true,
+			depends: "pilgrimAuto",
+		},
+		{
+			title: "Pilgrim Auto Use at Half",
+			description:
+				"Enable/disable Pilgrim auto attacking/questing at half energy instead of full",
+			gmValue: "pilgrimAutoH",
+			type: "falsy",
+			default: false,
+			depends: "pilgrimAuto",
+		},
+		{
+			title: "Pilgrim Auto Stop",
+			description:
+				"Enable/disable Pilgrim stopping after specified duration",
+			gmValue: "pilgrimExpire",
+			type: "falsy",
+			default: true,
+		},
+		{
+			title: "Pilgrim Auto Stop Timeout",
 			description: "Set Pilgrim autostop timeout (in minutes)",
 			gmValue: "pilgrimExpireT",
 			type: "number",
