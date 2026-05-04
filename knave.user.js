@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Knave
-// @version      4.2
+// @version      4.2.1
 // @description  SimpleMMO toolkit
 // @author       viermat (https://github.com/viermat)
 // @match        https://web.simple-mmo.com/*
@@ -117,6 +117,33 @@ function i_displayToast(src, text, type, timeout, bottom = false) {
 }
 
 /**
+ * Create a new menu button in Knave style
+ * @param {String} originalLabel Label of old button
+ * @param {String} newLabel Label of new button
+ * @param {Function} buttonHandler
+ * @returns {{ button: HTMLAnchorElement, buttonSpan: HTMLSpanElement }} New button and its span
+ */
+function createMenuBtn(originalLabel, newLabel, buttonHandler) {
+	const btnOld = textSearch(originalLabel, "span");
+
+	const btn = btnOld.parentElement.cloneNode(true);
+	btnOld.parentElement.parentElement.appendChild(btn);
+
+	// Action button's text element
+	const btnSpan = btn.querySelector("span");
+
+	// Stylize action button
+	btnSpan.textContent = newLabel;
+	btn.style.cursor = "pointer";
+
+	// Repurpose "a" element into a button
+	btn.removeAttribute("href");
+	btn.addEventListener("click", buttonHandler);
+
+	return { btn, btnSpan };
+}
+
+/**
  * Change action button state
  * @param {Element} button Action button
  * @param {Boolean} [enabled="false"] enabled Revert to original state
@@ -130,6 +157,7 @@ function changeState(button, enabled = false) {
 		button.classList.remove("hover:text-gray-900");
 		button.classList.remove("dark:text-gray-300");
 		button.classList.add("dark:text-gray-600");
+		button.classList.add("knave-disabled");
 	}
 }
 
@@ -350,14 +378,24 @@ async function codex(settings) {
 
 async function pilgrim() {
 	if (/travel*/g.test(location.href)) {
-		// Create action button
-		const btnOld = textSearch("Inventory", "span");
+		const { btn, btnSpan } = createMenuBtn("Inventory", "Pilgrim", () => {
+			let on = "";
 
-		const btn = btnOld.parentElement.cloneNode(true);
-		btnOld.parentElement.parentElement.appendChild(btn);
+			if (window.isKnightOn) on = "Knight";
+			if (window.isSentinelOn) on = "Sentinel";
 
-		// Action button's text element
-		const btnSpan = btn.querySelector("span");
+			if (on) {
+				t_displayToast(
+					`Can't use Pilgrim while ${on} is running`,
+					"error",
+					5,
+				);
+
+				return;
+			} else {
+				switchState();
+			}
+		});
 
 		// "Take a Step" button
 		const stepBtn = condSearch(
@@ -382,20 +420,23 @@ async function pilgrim() {
 					data.energy >=
 					(half ? Math.floor(data.max_energy / 2) : data.max_energy)
 				) {
+					window.isPilgrimAutoOn = true;
 					window.isPilgrimOn = false;
 
 					document.querySelector("#knaveKnight").click();
 
 					window.addEventListener(
 						"completed",
-						() => {
-							if (!window.isPilgrimOn) {
-								window.isPilgrimOn = true;
-								travel();
-							}
+						async () => {
+							window.isPilgrimAutoOn = false;
+							window.isPilgrimOn = true;
+
+							travel();
 						},
 						{ once: true },
 					);
+
+					return;
 				}
 			}
 
@@ -406,26 +447,34 @@ async function pilgrim() {
 						? Math.floor(data.max_quest_points / 2)
 						: data.max_quest_points)
 				) {
+					window.isPilgrimAutoOn = true;
 					window.isPilgrimOn = false;
 
 					document.querySelector("#knaveSentinel").click();
 
 					window.addEventListener(
 						"completed",
-						() => {
-							if (!window.isPilgrimOn) {
-								window.isPilgrimOn = true;
-								travel();
-							}
+						async () => {
+							window.isPilgrimAutoOn = false;
+							window.isPilgrimOn = true;
+
+							travel();
 						},
 						{ once: true },
 					);
+
+					return;
 				}
 			}
 		}
 
 		function switchState() {
-			window.isPilgrimOn = !window.isPilgrimOn;
+			if (
+				btn.classList.contains("knave-disabled") &&
+				!window.isPilgrimOn
+			) {
+				window.isPilgrimOn = false;
+			} else window.isPilgrimOn = !window.isPilgrimOn;
 
 			if (window.isPilgrimOn) {
 				if (stats.time == 0) stats.time = new Date();
@@ -450,8 +499,6 @@ async function pilgrim() {
 					);
 				}
 			} else {
-				clearInterval(window.pilgrimAuto);
-
 				changeState(btn, true);
 
 				if (stats.steps > 5 && getSTG("pilgrimAlert")) {
@@ -504,6 +551,7 @@ async function pilgrim() {
 				stats.waves = 0;
 
 				if (getSTG("pilgrimExpire")) clearTimeout(window.pilgrimExpire);
+				if (getSTG("pilgrimAuto")) clearInterval(window.pilgrimAuto);
 			}
 		}
 
@@ -526,6 +574,7 @@ async function pilgrim() {
 
 						if (healEl && healEl.textContent.includes("heal?")) {
 							window.isPilgrimOn = false;
+
 							changeState(btn, true);
 
 							Swal.fire({
@@ -628,15 +677,23 @@ async function pilgrim() {
 
 											if (type) {
 												npcDefeated = true;
-
 												npc.remove();
+
+												const npcName = condSearch(
+													(e) =>
+														/\/npcs\/view/g.test(
+															e.href,
+														),
+													"a",
+													doc,
+												).textContent;
 
 												if (data.type == "success") {
 													i_displayToast(
 														doc.querySelector(
 															"img#npc_avatar",
 														).src,
-														`Killed ${condSearch((e) => /\/npcs\/view/g.test(e.href), "a", doc).textContent}`,
+														`Killed ${npcName}`,
 														"success",
 														5,
 														true,
@@ -655,12 +712,12 @@ async function pilgrim() {
 															5,
 														);
 													} else if (
-														data.title.includes(
-															"Hold up!",
+														data.result.includes(
+															"are dead",
 														)
 													) {
 														t_displayToast(
-															`You are dead`,
+															`Could not attack ${npcName}, you are dead`,
 															"error",
 															5,
 														);
@@ -730,14 +787,6 @@ async function pilgrim() {
 			attributes: true,
 			attributeFilter: ["disabled"],
 		});
-
-		// Stylize action button
-		btnSpan.textContent = "Pilgrim";
-		btn.style.cursor = "pointer";
-
-		// Repurpose "a" element into a button
-		btn.removeAttribute("href");
-		btn.addEventListener("click", () => switchState());
 
 		// Modify request before it's sent so mouse position corresponds
 		const oldFetch = unsafeWindow.fetch;
@@ -1004,45 +1053,27 @@ async function envoy() {
 }
 
 async function knight() {
-	// Create action button
-	const btnOld = textSearch("Battle", "span");
+	const { btn, btnSpan } = createMenuBtn("Battle", "Knight", async (e) => {
+		let on = "";
 
-	const btn = btnOld.parentElement.cloneNode(true);
-	btnOld.parentElement.parentElement.appendChild(btn);
+		if (window.isPilgrimOn && !window.isPilgrimAutoOn) on = "Pilgrim";
+		if (window.isSentinelOn) on = "Sentinel";
 
-	// Action button's text element
-	const btnSpan = btn.querySelector("span");
-
-	// Stylize action button
-	btnSpan.textContent = "Knight";
-	btn.style.cursor = "pointer";
-
-	btn.setAttribute("id", "knaveKnight");
-
-	// Repurpose "a" element into a button
-	btn.removeAttribute("href");
-	btn.addEventListener("click", async (e) => {
-		if (window.isPilgrimOn) {
+		if (on) {
 			t_displayToast(
-				"Can't use Knight while Pilgrim is running",
+				`Can't use Knight while ${on} is running`,
 				"error",
 				5,
 			);
-			return;
-		}
 
-		if (window.isSentinelOn) {
-			t_displayToast(
-				"Can't use Knight while Sentinel is running",
-				"error",
-				5,
-			);
 			return;
 		}
 
 		if (window.isKnightOn) {
 			window.isKnightOn = false;
 		} else {
+			window.isKnightOn = true;
+
 			function killKnight() {
 				window.isKnightOn = false;
 
@@ -1147,15 +1178,15 @@ async function knight() {
 											this.addEventListener(
 												"load",
 												async function () {
-													let res =
+													let data =
 														this?.responseText;
 
 													try {
-														res = JSON.parse(
+														data = JSON.parse(
 															this.responseText,
 														);
 
-														let type = res?.type;
+														let type = data?.type;
 
 														if (type) {
 															oppDefeated = true;
@@ -1178,7 +1209,7 @@ async function knight() {
 																type === "error"
 															) {
 																if (
-																	res.result.includes(
+																	data.result.includes(
 																		"defeated",
 																	)
 																) {
@@ -1192,7 +1223,7 @@ async function knight() {
 																		true,
 																	);
 																} else if (
-																	res.result.includes(
+																	data.result.includes(
 																		"half health",
 																	)
 																) {
@@ -1209,6 +1240,16 @@ async function knight() {
 																			1,
 																		)),
 																	);
+																} else if (
+																	data.result.includes(
+																		"are dead",
+																	)
+																) {
+																	t_displayToast(
+																		`Could not attack ${userName}, you are dead`,
+																		"error",
+																		10,
+																	);
 																} else {
 																	killKnight();
 
@@ -1219,7 +1260,7 @@ async function knight() {
 																	);
 
 																	console.error(
-																		res,
+																		data,
 																	);
 																}
 															}
@@ -1275,51 +1316,36 @@ async function knight() {
 					2.5,
 				);
 
+			killKnight();
+
 			changeState(btn, true);
 		}
 	});
+
+	btn.setAttribute("id", "knaveKnight");
 }
 
 async function sentinel() {
-	// Create action button
-	const btnOld = textSearch("Tasks", "span");
+	const { btn, btnSpan } = createMenuBtn("Tasks", "Sentinel", async (e) => {
+		let on = "";
 
-	const btn = btnOld.parentElement.cloneNode(true);
-	btnOld.parentElement.parentElement.appendChild(btn);
+		if (window.isPilgrimOn && !window.isPilgrimAutoOn) on = "Pilgrim";
+		if (window.isKnightOn) on = "Knight";
 
-	// Action button's text element
-	const btnSpan = btn.querySelector("span");
-
-	// Stylize action button
-	btnSpan.textContent = "Sentinel";
-	btn.style.cursor = "pointer";
-
-	btn.setAttribute("id", "knaveSentinel");
-
-	// Repurpose "a" element into a button
-	btn.removeAttribute("href");
-	btn.addEventListener("click", async (e) => {
-		if (window.isPilgrimOn) {
+		if (on) {
 			t_displayToast(
-				"Can't use Sentinel while Pilgrim is running",
+				`Can't use Knight while ${on} is running`,
 				"error",
 				5,
 			);
+
 			return;
 		}
-
-		if (window.isKnightOn) {
-			t_displayToast(
-				"Can't use Sentinel while Knight is running",
-				"error",
-				5,
-			);
-			return;
-		}
-
 		if (window.isSentinelOn) {
 			window.isSentinelOn = false;
 		} else {
+			window.isSentinelOn = true;
+
 			function killSentinel() {
 				window.isSentinelOn = false;
 
@@ -1335,8 +1361,6 @@ async function sentinel() {
 				var questPoints = data.quest_points;
 
 				if (questPoints > 0) {
-					window.isSentinelOn = true;
-
 					var questCount = 0;
 
 					i_displayToast(
@@ -1392,9 +1416,13 @@ async function sentinel() {
 				}
 			});
 
+			killSentinel();
+
 			changeState(btn, true);
 		}
 	});
+
+	btn.setAttribute("id", "knaveSentinel");
 }
 
 async function energyMax() {
