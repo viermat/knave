@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Knave
-// @version      4.2.1
+// @version      4.2.2
 // @description  SimpleMMO toolkit
 // @author       viermat (https://github.com/viermat)
 // @match        https://web.simple-mmo.com/*
@@ -153,6 +153,7 @@ function changeState(button, enabled = false) {
 		button.classList.add("hover:text-gray-900");
 		button.classList.remove("dark:text-gray-600");
 		button.classList.add("dark:text-gray-300");
+		button.classList.remove("knave-disabled");
 	} else {
 		button.classList.remove("hover:text-gray-900");
 		button.classList.remove("dark:text-gray-300");
@@ -1150,6 +1151,7 @@ async function knight() {
 					} catch {}
 
 					var killCount = 0;
+					var skipped = 0;
 
 					if (targetUsers.length > 0) {
 						for (let i = 0; i < targetUsers.length; i++) {
@@ -1227,6 +1229,8 @@ async function knight() {
 																		"half health",
 																	)
 																) {
+																	skipped++;
+
 																	i_displayToast(
 																		currentUser?.avatar_url,
 																		`Could not attack ${userName}, skipping`,
@@ -1234,18 +1238,15 @@ async function knight() {
 																		5,
 																		true,
 																	);
-
-																	targetUsers.push(
-																		...(await generatePlayers(
-																			1,
-																		)),
-																	);
 																} else if (
 																	data.result.includes(
 																		"are dead",
 																	)
 																) {
-																	t_displayToast(
+																	killKnight();
+
+																	i_displayToast(
+																		currentUser?.avatar_url,
 																		`Could not attack ${userName}, you are dead`,
 																		"error",
 																		10,
@@ -1263,6 +1264,16 @@ async function knight() {
 																		data,
 																	);
 																}
+															} else {
+																skipped++;
+
+																i_displayToast(
+																	currentUser?.avatar_url,
+																	`Soft error while attacking ${username}, skipping`,
+																	"info",
+																	5,
+																	true,
+																);
 															}
 														}
 													} catch {}
@@ -1287,6 +1298,14 @@ async function knight() {
 									}
 								},
 							);
+
+							if (skipped > 0 && targetUsers.length - i == 1) {
+								targetUsers.push(
+									...(await generatePlayers(skipped)),
+								);
+
+								skipped = 0;
+							}
 
 							await asyncWait(
 								1500 + Math.floor(Math.random() * 500),
