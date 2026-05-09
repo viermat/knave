@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Knave
-// @version      4.3
+// @version      4.3.1
 // @description  SimpleMMO toolkit
 // @author       viermat (https://github.com/viermat)
 // @match        https://web.simple-mmo.com/*
@@ -135,6 +135,12 @@ function createMenuBtn(originalLabel, newLabel, buttonHandler) {
 	// Stylize action button
 	btnSpan.textContent = newLabel;
 	btn.style.cursor = "pointer";
+
+	// Copy classes from Your Character so if the page is one of the old buttons being copied the new button classes are not for the selected button
+	btn.classList = textSearch(
+		"Your Character",
+		"span",
+	).parentElement.classList;
 
 	// Repurpose "a" element into a button
 	btn.removeAttribute("href");
