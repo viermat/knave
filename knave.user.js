@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Knave
-// @version      4.2.2
+// @version      4.3
 // @description  SimpleMMO toolkit
 // @author       viermat (https://github.com/viermat)
 // @match        https://web.simple-mmo.com/*
@@ -60,6 +60,15 @@ async function asyncQuery(query, doc = document) {
 }
 
 /**
+ * Asynchronous sleep function
+ * @param {Number} ms Sleep time in milliseconds
+ * @returns {Promise<null>} Resolved when sleep has finished
+ */
+async function asyncWait(ms) {
+	return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
  * Get player data from internal API
  * @returns {JSON} Player data
  */
@@ -69,15 +78,6 @@ async function getPlayerData() {
 			.then((response) => response.json())
 			.then((data) => resolve(data));
 	});
-}
-
-/**
- * Asynchronous sleep function
- * @param {Number} ms Sleep time in milliseconds
- * @returns {Promise<null>} Resolved when sleep has finished
- */
-async function asyncWait(ms) {
-	return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 // Safeguard for displayToast gravity
@@ -192,6 +192,7 @@ const ICONS = {
 	Boss: "/img/sprites/bosses/16.png",
 	Energy: "/img/icons/S_Thunder01.png",
 	Book: "/img/icons/W_Book01.png",
+	Market: "/img/icons/town/5.png",
 
 	Wave: "/img/icons/one/icon088.png",
 	NPC: "/img/icons/S_Earth03.png",
@@ -1105,7 +1106,7 @@ async function knight() {
 							)
 								await new Promise((r) => setTimeout(r, 100));
 
-							for (let i = 0; i < Math.ceil(energy / 10); i++) {
+							while (users.length < energy) {
 								await win.game.fetch({
 									endpoint:
 										win.game_data.battle.colosseum
@@ -1122,10 +1123,9 @@ async function knight() {
 									on_success: function (e) {
 										users = Array.from(
 											new Map(
-												[
-													...users,
-													...e["opponents"],
-												].map((opp) => [opp.id, opp]),
+												[...users, ...e.opponents].map(
+													(opp) => [opp.id, opp],
+												),
 											).values(),
 										);
 									},
@@ -1135,11 +1135,11 @@ async function knight() {
 							}
 						});
 
+						users = users.slice(0, energy);
+
 						users.sort((a, b) => {
 							return a.level - b.level;
 						});
-
-						users.splice(energy);
 
 						return users;
 					}
@@ -1195,8 +1195,7 @@ async function knight() {
 
 															if (
 																type ==
-																	"success" ||
-																type == null
+																"success"
 															) {
 																killCount++;
 
@@ -1530,6 +1529,100 @@ async function statMax() {
 	}
 }
 
+async function hoarder() {
+	if (/\/market\/listings/g.test(location.href)) {
+		const { btn, btnSpan } = createMenuBtn(
+			"Crafting",
+			"Hoarder",
+			async () => {
+				window.isHoarderOn = !window.isHoarderOn;
+
+				if (!window.isHoarderOn) {
+					changeState(btn, true);
+				} else {
+					try {
+						async function handle(alertEnabled = true, res = null) {
+							changeState(btn);
+
+							if (alertEnabled ? res?.value : true) {
+								i_displayToast(
+									ICONS.Market,
+									`Hoarder started`,
+									"success",
+									2,
+								);
+
+								const items = document.querySelector("tbody");
+
+								var itemCount = 0;
+
+								for (const item of items.querySelectorAll(
+									"tr",
+								)) {
+									if (!window.isHoarderOn) break;
+
+									const buy = textSearch(
+										"Buy",
+										"button",
+										item,
+									);
+									if (!buy) continue;
+
+									buy.click();
+
+									await asyncWait(
+										700 + Math.floor(Math.random() * 200),
+									);
+
+									const confirmBtn = textSearch(
+										"Buy Item",
+										"button",
+									);
+
+									if (confirmBtn) confirmBtn.click();
+
+									itemCount++;
+
+									await asyncWait(
+										700 + Math.floor(Math.random() * 200),
+									);
+								}
+
+								i_displayToast(
+									ICONS.Market,
+									`Bought ${itemCount} items`,
+									"success",
+									5,
+								);
+							}
+
+							changeState(btn, true);
+						}
+
+						if (getSTG("hoarderAlert"))
+							Swal.fire({
+								title: "Are you sure you want to buy the whole page?",
+								text: "Check prices of all items on the page carefully!",
+								type: "warning",
+								showCancelButton: true,
+								confirmButtonText: "Yes",
+							}).then(async (res) => handle(true, res));
+						else handle(false);
+					} catch (e) {
+						t_displayToast(
+							"Error while running Hoarder",
+							"error",
+							10,
+						);
+
+						console.error(e);
+					}
+				}
+			},
+		);
+	}
+}
+
 (async function () {
 	"use strict";
 
@@ -1661,6 +1754,14 @@ async function statMax() {
 			type: "falsy",
 			default: false,
 		},
+		{
+			title: "Hoarder Alert",
+			description:
+				"Enable/disable Hoarder showing an alert before buying all items on the page",
+			gmValue: "hoarderAlert",
+			type: "falsy",
+			default: true,
+		},
 	];
 
 	GM_registerMenuCommand("Factory reset settings", () => {
@@ -1679,9 +1780,16 @@ async function statMax() {
 	try {
 		codex(SETTINGS);
 
-		[pilgrim, warden, envoy, knight, sentinel, energyMax, statMax].forEach(
-			(f) => f.call(),
-		);
+		[
+			pilgrim,
+			warden,
+			envoy,
+			knight,
+			sentinel,
+			energyMax,
+			statMax,
+			hoarder,
+		].forEach((f) => f.call());
 	} catch (e) {
 		t_displayToast("Error loading Knave tools", "error", 1e10);
 		console.error(e);

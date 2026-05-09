@@ -19,6 +19,8 @@ Knave is a SimpleMMO toolkit userscript.
 
 - Sentinel - uses all your quest points to perfom your best quest
 
+- Hoarder - buys everything on current page
+
 - Max Energy - adds a "Use Max" button when using MoEs
 
 - Max Stats - changes + button on stats page to automatically add max points to stat type (feature disabled by default)
