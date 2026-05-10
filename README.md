@@ -15,7 +15,7 @@ Knave is a SimpleMMO toolkit userscript.
 
 - Envoy - notifies you about upcoming world bosses
 
-- Knight - dumps all energy points in stabs
+- Knight - attacks npcs or players using all energy
 
 - Sentinel - uses all your quest points to perfom your best quest
 

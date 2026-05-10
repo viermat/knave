@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Knave
-// @version      4.3.1
+// @version      4.4
 // @description  SimpleMMO toolkit
 // @author       viermat (https://github.com/viermat)
 // @match        https://web.simple-mmo.com/*
@@ -183,10 +183,134 @@ function condSearch(handler, queryElem = "*", doc = document) {
  * @param {String} searchStr Search string (inclusion-based, not equivalency)
  * @param {String} queryElem Element query
  * @param {Document} doc Document scope
- * @returns
+ * @returns {Element | undefined}
  */
 function textSearch(searchStr, queryElem = "*", doc = document) {
 	return condSearch((e) => e.textContent.includes(searchStr), queryElem, doc);
+}
+
+/**
+ * Strict text-only condSearch
+ * @param {String} searchStr Search string (equivalency-based, not inclusion)
+ * @param {String} queryElem Element query
+ * @param {Document} doc Document scope
+ * @returns {Element | undefined}
+ */
+function sTextSearch(searchStr, queryElem = "*", doc = document) {
+	return condSearch(
+		(e) => e.textContent.trim() === searchStr,
+		queryElem,
+		doc,
+	);
+}
+
+/**
+ * Internal function to handle an NPC attack page
+ * @param {Function} ifType Callback for if 'type' exists
+ * @param {Function} ifSuccess Callback for if 'type' is 'success'
+ * @param {Document} doc Document scope
+ * @param {Window} win Window scope
+ * @returns {Object} data and npc object
+ */
+async function handleNpcAttack(
+	ifType,
+	ifSuccess,
+	doc = document,
+	win = window,
+) {
+	return new Promise(async (resolve) => {
+		let npcDefeated = false;
+
+		// Monkeypatch fetch
+		const oldFetch = win.fetch;
+
+		win.fetch = async (...args) => {
+			const res = await oldFetch.apply(win, args);
+
+			try {
+				const url = typeof args[0] === "string" ? args[0] : args[0].url;
+
+				if (
+					url.startsWith(
+						"https://web.simple-mmo.com/api/npcs/attack/",
+					)
+				) {
+					const data = await res.clone().json();
+
+					let type = res?.type;
+
+					if (type) {
+						npcDefeated = true;
+						ifType.call();
+
+						const npcName = condSearch(
+							(e) => /\/npcs\/view/g.test(e.href),
+							"a",
+							doc,
+						).textContent;
+
+						const npcAvatar =
+							doc.querySelector("img#npc_avatar").src;
+
+						resolve({
+							result: data,
+							npc: {
+								name: npcName,
+								avatar: npcAvatar,
+							},
+						});
+
+						if (data.type == "success") {
+							i_displayToast(
+								npcAvatar,
+								`Killed ${npcName}`,
+								"success",
+								5,
+								true,
+							);
+
+							ifSuccess.call();
+						} else {
+							if (data.result.includes("defeated")) {
+								i_displayToast(
+									npcAvatar,
+									`Died atacking ${npcName}`,
+									"error",
+									5,
+								);
+							} else if (data.result.includes("are dead")) {
+								i_displayToast(
+									npcAvatar,
+									`Could not attack ${npcName}, you are dead`,
+									"error",
+									5,
+								);
+							} else {
+								t_displayToast(
+									`Error attacking: ${data.title}`,
+									"error",
+									10,
+								);
+
+								console.error(data);
+							}
+						}
+					}
+				}
+			} catch {}
+
+			return res;
+		};
+
+		while (!npcDefeated) {
+			const attackBtn = sTextSearch("Attack", "button", doc);
+
+			if (!attackBtn) break;
+			attackBtn.click();
+
+			await asyncWait(500 + Math.floor(Math.random() * 500));
+		}
+	});
 }
 
 // Simpler name
@@ -658,106 +782,20 @@ async function pilgrim() {
 						await subDoc(
 							npc.href.split("?")[0],
 							async (doc, win) => {
-								let npcDefeated = false;
+								const res = await handleNpcAttack(
+									() => npc.remove(),
+									() => stats.kills++,
+									doc,
+									win,
+								);
 
-								// Monkeypatch fetch
-								const oldFetch = win.fetch;
+								if (res.type === "error") {
+									console.error(res);
 
-								win.fetch = async (...args) => {
-									const res = await oldFetch.apply(win, args);
-
-									try {
-										const url =
-											typeof args[0] === "string"
-												? args[0]
-												: args[0].url;
-
-										if (
-											url.startsWith(
-												"https://web.simple-mmo.com/api/npcs/attack/",
-											)
-										) {
-											const data = await res
-												.clone()
-												.json();
-
-											let type = res?.type;
-
-											if (type) {
-												npcDefeated = true;
-												npc.remove();
-
-												const npcName = condSearch(
-													(e) =>
-														/\/npcs\/view/g.test(
-															e.href,
-														),
-													"a",
-													doc,
-												).textContent;
-
-												if (data.type == "success") {
-													i_displayToast(
-														doc.querySelector(
-															"img#npc_avatar",
-														).src,
-														`Killed ${npcName}`,
-														"success",
-														5,
-														true,
-													);
-
-													stats.kills++;
-												} else {
-													if (
-														data.title.includes(
-															"defeated",
-														)
-													) {
-														t_displayToast(
-															`Died atacking: ${data.title}`,
-															"error",
-															5,
-														);
-													} else if (
-														data.result.includes(
-															"are dead",
-														)
-													) {
-														t_displayToast(
-															`Could not attack ${npcName}, you are dead`,
-															"error",
-															5,
-														);
-													} else {
-														t_displayToast(
-															`Error attacking: ${data.title}`,
-															"error",
-															10,
-														);
-
-														console.error(data);
-													}
-												}
-											}
-										}
-									} catch {}
-
-									return res;
-								};
-
-								while (!npcDefeated) {
-									const attackBtn = condSearch(
-										(e) => e.textContent.trim() == "Attack",
-										"button",
-										doc,
-									);
-
-									if (!attackBtn) break;
-									attackBtn.click();
-
-									await asyncWait(
-										500 + Math.floor(Math.random() * 500),
+									t_displayToast(
+										"Error while attacking NPC",
+										"error",
+										10,
 									);
 								}
 							},
@@ -1101,230 +1139,336 @@ async function knight() {
 
 					i_displayToast(ICONS.Boss, "Knight started", "success", 2);
 
-					async function generatePlayers(energy) {
-						var users = [];
+					var killCount = 0;
 
-						// Run inside /battle so the request looks like it came from the actual page
+					if (!getSTG("knightPlayers")) {
 						await subDoc("/battle", async (doc, win) => {
 							while (
-								!win.game_data?.battle?.colosseum
-									?.generate_opponents_endpoint
+								!win.game_data?.battle?.arena
+									?.generate_enemy_endpoint
 							)
 								await new Promise((r) => setTimeout(r, 100));
 
-							while (users.length < energy) {
-								await win.game.fetch({
-									endpoint:
-										win.game_data.battle.colosseum
-											.generate_opponents_endpoint,
+							var genEndpoint =
+								win.game_data.battle.arena
+									.generate_enemy_endpoint;
 
-									body: {
-										min_level: null,
-										max_level: getSTG("knightLvl"),
-										min_gold: null,
-										only_in_guild_war: getSTG("knightWar"),
-										has_bounty: false,
+							for (var i = 0; i < energyPoints; i++) {
+								if (!window.isKnightOn) break;
+
+								var enemy;
+
+								await game.fetch({
+									endpoint: genEndpoint,
+
+									on_success: function (res) {
+										if (res.status == "success")
+											enemy = res.enemy;
+										else {
+											console.error(res);
+											t_displayToast(
+												"Error while running Knight",
+												"error",
+												10,
+											);
+
+											killKnight();
+										}
 									},
 
-									on_success: function (e) {
-										users = Array.from(
-											new Map(
-												[...users, ...e.opponents].map(
-													(opp) => [opp.id, opp],
-												),
-											).values(),
+									on_error: function (e) {
+										console.error(e);
+										t_displayToast(
+											"Error while running Knight",
+											"error",
+											10,
 										);
+
+										killKnight();
 									},
 								});
 
-								await asyncWait(600);
+								if (enemy) {
+									await subDoc(
+										`/npcs/attack/${enemy.id}`,
+										async (_doc, _win) => {
+											const res = await handleNpcAttack(
+												() => {},
+												() => killCount++,
+												_doc,
+												_win,
+											);
+
+											if (res.type === "error") {
+												console.error(res);
+												t_displayToast(
+													"Error while attacking NPC",
+													"error",
+													10,
+												);
+
+												killKnight();
+											}
+										},
+									);
+								} else {
+									t_displayToast("No NPC found", "error", 10);
+
+									killKnight();
+								}
+
+								await asyncWait(
+									800 + Math.floor(Math.random() * 400),
+								);
 							}
+
+							i_displayToast(
+								ICONS.Attack,
+								`Killed ${killCount} NPCs`,
+								"success",
+								5,
+							);
 						});
+					} else {
+						async function generatePlayers(energy) {
+							var users = [];
 
-						users = users.slice(0, energy);
+							// Run inside /battle so the request looks like it came from the actual page
+							await subDoc("/battle", async (doc, win) => {
+								while (
+									!win.game_data?.battle?.colosseum
+										?.generate_opponents_endpoint
+								)
+									await new Promise((r) =>
+										setTimeout(r, 100),
+									);
 
-						users.sort((a, b) => {
-							return a.level - b.level;
-						});
+								while (users.length < energy) {
+									await win.game.fetch({
+										endpoint:
+											win.game_data.battle.colosseum
+												.generate_opponents_endpoint,
 
-						return users;
-					}
+										body: {
+											min_level: null,
+											max_level: getSTG("knightLvl"),
+											min_gold: null,
+											only_in_guild_war:
+												getSTG("knightWar"),
+											has_bounty: false,
+										},
 
-					var targetUsers = [];
+										on_success: function (e) {
+											users = Array.from(
+												new Map(
+													[
+														...users,
+														...e.opponents,
+													].map((opp) => [
+														opp.id,
+														opp,
+													]),
+												).values(),
+											);
+										},
+									});
 
-					try {
-						targetUsers = await generatePlayers(energyPoints);
-					} catch {}
+									await asyncWait(600);
+								}
+							});
 
-					var killCount = 0;
-					var skipped = 0;
+							users = users.slice(0, energy);
 
-					if (targetUsers.length > 0) {
-						for (let i = 0; i < targetUsers.length; i++) {
-							if (!window.isKnightOn) break;
+							users.sort((a, b) => {
+								return a.level - b.level;
+							});
 
-							const currentUser = targetUsers[i];
+							return users;
+						}
 
-							var tempEl = document.createElement(null);
-							tempEl.innerHTML = currentUser.name;
+						var targetUsers = [];
 
-							const userName =
-								tempEl.querySelector("a > span > span")
-									.textContent || "Opponent";
+						try {
+							targetUsers = await generatePlayers(energyPoints);
+						} catch {}
 
-							await subDoc(
-								"/user/attack/" + currentUser.id,
-								async (doc, win) => {
-									let oppDefeated = false;
+						var skipped = 0;
 
-									// Patch XHR (no idea why attack doesn't use fetch)
-									const oldSend =
-										win.XMLHttpRequest.prototype.send;
+						if (targetUsers.length > 0) {
+							for (let i = 0; i < targetUsers.length; i++) {
+								if (!window.isKnightOn) break;
 
-									win.XMLHttpRequest.prototype.send =
-										function (body) {
-											this.addEventListener(
-												"load",
-												async function () {
-													let data =
-														this?.responseText;
+								const currentUser = targetUsers[i];
 
-													try {
-														data = JSON.parse(
-															this.responseText,
-														);
+								var tempEl = document.createElement(null);
+								tempEl.innerHTML = currentUser.name;
 
-														let type = data?.type;
+								const userName =
+									tempEl.querySelector("a > span > span")
+										.textContent || "Opponent";
 
-														if (type) {
-															oppDefeated = true;
+								await subDoc(
+									"/user/attack/" + currentUser.id,
+									async (doc, win) => {
+										let oppDefeated = false;
 
-															if (
-																type ==
-																"success"
-															) {
-																killCount++;
+										// Patch XHR (no idea why attack doesn't use fetch)
+										const oldSend =
+											win.XMLHttpRequest.prototype.send;
 
-																i_displayToast(
-																	currentUser?.avatar_url,
-																	`Killed ${userName}`,
-																	"success",
-																	5,
-																	true,
-																);
-															} else if (
-																type === "error"
-															) {
+										win.XMLHttpRequest.prototype.send =
+											function (body) {
+												this.addEventListener(
+													"load",
+													async function () {
+														let data =
+															this?.responseText;
+
+														try {
+															data = JSON.parse(
+																this
+																	.responseText,
+															);
+
+															let type =
+																data?.type;
+
+															if (type) {
+																oppDefeated = true;
+
 																if (
-																	data.result.includes(
-																		"defeated",
-																	)
+																	type ==
+																	"success"
 																) {
-																	killKnight();
+																	killCount++;
 
 																	i_displayToast(
 																		currentUser?.avatar_url,
-																		`Died attacking ${userName}`,
-																		"error",
+																		`Killed ${userName}`,
+																		"success",
 																		5,
 																		true,
 																	);
 																} else if (
-																	data.result.includes(
-																		"half health",
-																	)
+																	type ===
+																	"error"
 																) {
+																	if (
+																		data.result.includes(
+																			"defeated",
+																		)
+																	) {
+																		killKnight();
+
+																		i_displayToast(
+																			currentUser?.avatar_url,
+																			`Died attacking ${userName}`,
+																			"error",
+																			5,
+																			true,
+																		);
+																	} else if (
+																		data.result.includes(
+																			"half health",
+																		)
+																	) {
+																		skipped++;
+
+																		i_displayToast(
+																			currentUser?.avatar_url,
+																			`Could not attack ${userName}, skipping`,
+																			"info",
+																			5,
+																			true,
+																		);
+																	} else if (
+																		data.result.includes(
+																			"are dead",
+																		)
+																	) {
+																		killKnight();
+
+																		i_displayToast(
+																			currentUser?.avatar_url,
+																			`Could not attack ${userName}, you are dead`,
+																			"error",
+																			10,
+																		);
+																	} else {
+																		killKnight();
+
+																		t_displayToast(
+																			`Error attacking: ${data.title}`,
+																			"error",
+																			10,
+																		);
+
+																		console.error(
+																			data,
+																		);
+																	}
+																} else {
 																	skipped++;
 
 																	i_displayToast(
 																		currentUser?.avatar_url,
-																		`Could not attack ${userName}, skipping`,
+																		`Soft error while attacking ${username}, skipping`,
 																		"info",
 																		5,
 																		true,
 																	);
-																} else if (
-																	data.result.includes(
-																		"are dead",
-																	)
-																) {
-																	killKnight();
-
-																	i_displayToast(
-																		currentUser?.avatar_url,
-																		`Could not attack ${userName}, you are dead`,
-																		"error",
-																		10,
-																	);
-																} else {
-																	killKnight();
-
-																	t_displayToast(
-																		`Error attacking: ${data.title}`,
-																		"error",
-																		10,
-																	);
-
-																	console.error(
-																		data,
-																	);
 																}
-															} else {
-																skipped++;
-
-																i_displayToast(
-																	currentUser?.avatar_url,
-																	`Soft error while attacking ${username}, skipping`,
-																	"info",
-																	5,
-																	true,
-																);
 															}
-														}
-													} catch {}
-												},
+														} catch {}
+													},
+												);
+
+												return oldSend.call(this, body);
+											};
+
+										while (!oppDefeated) {
+											const attackBtn = doc.querySelector(
+												"button#attackButton",
 											);
 
-											return oldSend.call(this, body);
-										};
+											if (!attackBtn) break;
+											attackBtn.click();
 
-									while (!oppDefeated) {
-										const attackBtn = doc.querySelector(
-											"button#attackButton",
-										);
-
-										if (!attackBtn) break;
-										attackBtn.click();
-
-										await asyncWait(
-											1.1 +
-												Math.floor(Math.random() * 0.8),
-										);
-									}
-								},
-							);
-
-							if (skipped > 0 && targetUsers.length - i == 1) {
-								targetUsers.push(
-									...(await generatePlayers(skipped)),
+											await asyncWait(
+												1.1 +
+													Math.floor(
+														Math.random() * 0.8,
+													),
+											);
+										}
+									},
 								);
 
-								skipped = 0;
+								if (
+									skipped > 0 &&
+									targetUsers.length - i == 1
+								) {
+									targetUsers.push(
+										...(await generatePlayers(skipped)),
+									);
+
+									skipped = 0;
+								}
+
+								await asyncWait(
+									1500 + Math.floor(Math.random() * 500),
+								);
 							}
 
-							await asyncWait(
-								1500 + Math.floor(Math.random() * 500),
+							i_displayToast(
+								ICONS.Attack,
+								`Killed ${killCount} players`,
+								"success",
+								5,
 							);
+						} else {
+							t_displayToast("No opponents found", "error", 2.5);
 						}
-
-						i_displayToast(
-							ICONS.Attack,
-							`Killed ${killCount} players`,
-							"success",
-							5,
-						);
-					} else {
-						t_displayToast("No opponents found", "error", 2.5);
 					}
 				} else {
 					t_displayToast(
@@ -1665,11 +1809,19 @@ async function hoarder() {
 			default: 2,
 		},
 		{
+			title: "Knight Targets Players",
+			description: "Enable/disable Knight fetching NPCs or players",
+			gmValue: "knightPlayers",
+			type: "falsy",
+			default: true,
+		},
+		{
 			title: "Knight Max Level",
-			description: "Set Knight's max opponent level",
+			description: "Set Knight's max player opponent level",
 			gmValue: "knightLvl",
 			type: "number",
 			default: 700,
+			depends: "knightPlayers",
 		},
 		{
 			title: "Knight Guild War",
@@ -1678,6 +1830,7 @@ async function hoarder() {
 			gmValue: "knightWar",
 			type: "falsy",
 			default: false,
+			depends: "knightPlayers",
 		},
 		{
 			title: "Pilgrim Auto Wave",
